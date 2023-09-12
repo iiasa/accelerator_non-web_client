@@ -1,0 +1,3 @@
+from .AcceleratorProjectService import AcceleratorProjectService
+
+ACliService = AcceleratorProjectService

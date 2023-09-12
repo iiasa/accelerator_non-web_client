@@ -17,7 +17,7 @@ class AcceleratorProjectService:
     def get_file_stat(self, bucket_object_id):
         res = self.http_client.request(
             "GET", 
-            f"{self.cli_base_url}/file-stat/{bucket_object_id}"
+            f"{self.cli_base_url}/file-stat/{bucket_object_id}",
             headers=self.common_request_headers
         )
         return res.json()
@@ -28,7 +28,7 @@ class AcceleratorProjectService:
     def get_bucket_object_validation_type(self, bucket_object_id):
         res = self.http_client.request(
             "GET", 
-            f"{self.cli_base_url}/dataset-type/{bucket_object_id}"
+            f"{self.cli_base_url}/dataset-type/{bucket_object_id}",
             headers=self.common_request_headers
         )
         if res.data:
@@ -38,7 +38,7 @@ class AcceleratorProjectService:
     def get_file_url(self, bucket_object_id):
         res = self.http_client.request(
             "GET", 
-            f"{self.cli_base_url}/file-url/{bucket_object_id}"
+            f"{self.cli_base_url}/file-url/{bucket_object_id}",
             headers=self.common_request_headers
         )
 
@@ -84,7 +84,7 @@ class AcceleratorProjectService:
             "GET", 
             f"{self.cli_base_url}/put-update-signed-url",
             fields=dict(
-                app_bucket_id=app_bucket_id,
+                bucket_object_id=bucket_object_id,
                 upload_id=upload_id,
                 part_number=part_number
             ),
@@ -94,7 +94,7 @@ class AcceleratorProjectService:
         return res.data.decode()
 
     def get_put_create_multipart_upload_id(self, filename):
-       res = self.http_client.request(
+        res = self.http_client.request(
             "GET", 
             f"{self.cli_base_url}/create-multipart-upload-id/{filename}",
             headers=self.common_request_headers
