@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: accli
+Version: 0.1
+Summary: IIASA Accelerator python client
+Author: Wrufesh S
+Author-email: wrufesh@gmail.com
+Requires-Python: >=3.6
+License-File: LICENSE
+Requires-Dist: urllib3>=2.0.4
