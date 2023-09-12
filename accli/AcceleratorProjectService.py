@@ -3,13 +3,22 @@ import base64
 import urllib3
 
 class AcceleratorProjectService:
-    def __init__(self, project_slug, user_token):
+    def __init__(
+            self, 
+            project_slug, 
+            user_token, 
+            cli_base_url='http://accelerator-api/v1/acli',
+            verify_cert=True
+        ):
         self.project_slug = project_slug
         self.user_token = user_token
 
-        self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1)
+        if verify_cert:
+            self.http_client = urllib3.poolmanager.PoolManager(num_pools=1)
+        else:
+            self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1)
 
-        self.cli_base_url = "http://accelerator-api/v1/acli"
+        self.cli_base_url = cli_base_url
         self.common_request_headers = {
             'x-authorization': user_token
         }
