@@ -4,13 +4,11 @@ import urllib3
 
 class AcceleratorProjectService:
     def __init__(
-            self, 
-            project_slug, 
+            self,
             user_token, 
             cli_base_url='http://accelerator-api/v1/acli',
             verify_cert=True
         ):
-        self.project_slug = project_slug
         self.user_token = user_token
 
         if verify_cert:
