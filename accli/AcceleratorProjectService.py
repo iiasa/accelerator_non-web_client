@@ -54,10 +54,10 @@ class AcceleratorProjectService:
 
 
     def get_file_stream(self, bucket_object_id):
-        url = self.get_file_url(bucket_object_id)
+        res = self.get_file_url(bucket_object_id)
         if url:
             url = res.data.decode()
-            resp = http_client.request("GET", url, preload_content=False)
+            resp = self.http_client.request("GET", url, preload_content=False)
             return resp
 
     def get_multipart_put_create_signed_url(
@@ -375,3 +375,21 @@ class AcceleratorProjectService:
                 )
 
             raise err
+
+    def update_job_status(self, status):
+        headers = {"Content-Type": "application/json"}
+
+        headers.update(self.common_request_headers)
+
+        res = self.http_client.request(
+            "POST", 
+            f"{self.cli_base_url}/`webhook-event",
+            json=dict(
+                executor_id='ACCELERATOR_CELERY',
+                type='STATUS_UPDATE',
+                data=dict(
+                    new_status=status
+                )
+            ),
+            headers=headers
+        )
