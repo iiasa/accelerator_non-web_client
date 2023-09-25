@@ -123,7 +123,8 @@ class AcceleratorProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: list[tuple[str, str]]
+        parts: list[tuple[str, str]],
+        is_log_file=False
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -136,7 +137,8 @@ class AcceleratorProjectService:
                 app_bucket_id=app_bucket_id,
                 filename=filename,
                 upload_id=upload_id,
-                parts=base64.b64encode(json.dumps(parts))
+                parts=base64.b64encode(json.dumps(parts)),
+                is_log_file=is_log_file
             ),
             headers=headers
         )
@@ -228,7 +230,7 @@ class AcceleratorProjectService:
                 progress.update(len(data))
         return part_data
 
-    def add_filestream_as_job_output(self, filename, file_stream, user_id, job_id):
+    def add_filestream_as_job_output(self, filename, file_stream, is_log_file=False):
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
@@ -290,7 +292,7 @@ class AcceleratorProjectService:
                 parts.append((part_number, etag))
 
             result, created_bucket_object_id = self.complete_job_multipart_upload(
-                app_bucket_id, uniqified_filename, upload_id, parts, job_id, user_id
+                app_bucket_id, uniqified_filename, upload_id, parts, is_log_file=is_log_file
             )
             return created_bucket_object_id
 
