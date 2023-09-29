@@ -33,7 +33,7 @@ class AcceleratorProjectService:
         if str(res.status_code).startswith('4'):
             raise AccAPIError(
                 "Accelerator api error", 
-                status_code=res.status_code, 
+                status_code=res.http_status, 
                 response_data=res.data
             )
         
