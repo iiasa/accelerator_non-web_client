@@ -399,14 +399,16 @@ class AcceleratorProjectService:
             raise err
 
     def update_job_status(self, status):
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            # "Content-Type": "application/json"
+        }
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
             "POST", 
             f"{self.cli_base_url}/webhook-event",
-            json=dict(
+            data=dict(
                 executor_id='ACCELERATOR_CELERY',
                 type='STATUS_UPDATE',
                 data=dict(
