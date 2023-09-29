@@ -1,3 +1,4 @@
+import requests
 import json
 import base64
 import urllib3
@@ -31,10 +32,10 @@ class AcceleratorProjectService:
     def http_client_request(self, *args, **kwargs):
         res = self.http_client.request(*args, **kwargs)
 
-        if str(res.http_status).startswith('4'):
+        if str(res.status).startswith('4'):
             raise AccAPIError(
                 "Accelerator api error", 
-                status_code=res.http_status, 
+                status_code=res.status, 
                 response_data=res.data
             )
         
@@ -404,7 +405,7 @@ class AcceleratorProjectService:
 
         res = self.http_client_request(
             "POST", 
-            f"{self.cli_base_url}/`webhook-event",
+            f"{self.cli_base_url}/webhook-event",
             json=dict(
                 executor_id='ACCELERATOR_CELERY',
                 type='STATUS_UPDATE',
