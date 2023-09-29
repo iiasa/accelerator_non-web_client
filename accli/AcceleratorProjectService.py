@@ -408,7 +408,7 @@ class AcceleratorProjectService:
         res = self.http_client_request(
             "POST", 
             f"{self.cli_base_url}/webhook-event",
-            data=dict(
+            body=dict(
                 executor_id='ACCELERATOR_CELERY',
                 type='STATUS_UPDATE',
                 data=dict(
