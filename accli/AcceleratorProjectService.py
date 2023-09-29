@@ -2,6 +2,12 @@ import json
 import base64
 import urllib3
 
+class AccAPIError(Exception):
+    def __init__(self, *args, **kwargs):
+        self.status_code = kwargs.pop('status_code')
+        self.response_data = kwargs.pop('response_data')
+        super().__init__(*args, **kwargs)
+
 class AcceleratorProjectService:
     def __init__(
             self,
@@ -21,8 +27,20 @@ class AcceleratorProjectService:
             'x-authorization': user_token
         }
 
+    def http_client_request(self, *args, **kwargs):
+        res = self.http_client.request(*args, **kwargs)
+
+        if str(res.status_code).startswith('4'):
+            raise AccAPIError(
+                "Accelerator api error", 
+                status_code=res.status_code, 
+                response_data=res.data
+            )
+        
+        return res
+
     def get_file_stat(self, bucket_object_id):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/file-stat/{bucket_object_id}",
             headers=self.common_request_headers
@@ -33,7 +51,7 @@ class AcceleratorProjectService:
         return self.get_bucket_object_validation_type(*args, **kwargs)
 
     def get_bucket_object_validation_type(self, bucket_object_id):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/dataset-type/{bucket_object_id}",
             headers=self.common_request_headers
@@ -43,7 +61,7 @@ class AcceleratorProjectService:
 
     
     def get_file_url(self, bucket_object_id):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/file-url/{bucket_object_id}",
             headers=self.common_request_headers
@@ -57,7 +75,7 @@ class AcceleratorProjectService:
         res = self.get_file_url(bucket_object_id)
         if url:
             url = res.data.decode()
-            resp = self.http_client.request("GET", url, preload_content=False)
+            resp = self.http_client_request("GET", url, preload_content=False)
             return resp
 
     def get_multipart_put_create_signed_url(
@@ -67,7 +85,7 @@ class AcceleratorProjectService:
         upload_id,
         part_number
     ):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/put-create-signed-url",
             fields=dict(
@@ -87,7 +105,7 @@ class AcceleratorProjectService:
         upload_id,
         part_number,
     ):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/put-update-signed-url",
             fields=dict(
@@ -101,7 +119,7 @@ class AcceleratorProjectService:
         return res.data.decode()
 
     def get_put_create_multipart_upload_id(self, filename):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/create-multipart-upload-id/{filename}",
             headers=self.common_request_headers
@@ -110,7 +128,7 @@ class AcceleratorProjectService:
         return res.data.decode()
 
     def get_put_update_multipart_upload_id(self, bucket_object_id):
-        res = self.http_client.request(
+        res = self.http_client_request(
             "GET", 
             f"{self.cli_base_url}/create-multipart-upload-id/{bucket_object_id}",
             headers=self.common_request_headers
@@ -130,7 +148,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "PUT", 
             f"{self.cli_base_url}/complete-create-multipart-upload",
             json=dict(
@@ -151,7 +169,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "PUT", 
             f"{self.cli_base_url}/complete-update-multipart-upload",
             json=dict(
@@ -168,7 +186,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "PUT", 
             f"{self.cli_base_url}/abort-create-multipart-upload",
             json=dict(
@@ -185,7 +203,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "PUT", 
             f"{self.cli_base_url}/abort-update-multipart-upload",
             json=dict(
@@ -203,7 +221,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "PUT", 
             f"{self.cli_base_url}/register-iamc-validation",
             json=dict(
@@ -383,7 +401,7 @@ class AcceleratorProjectService:
 
         headers.update(self.common_request_headers)
 
-        res = self.http_client.request(
+        res = self.http_client_request(
             "POST", 
             f"{self.cli_base_url}/`webhook-event",
             json=dict(
