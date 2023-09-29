@@ -401,6 +401,7 @@ class AcceleratorProjectService:
     def update_job_status(self, status):
         headers = {
             # "Content-Type": "application/json"
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
 
         headers.update(self.common_request_headers)
