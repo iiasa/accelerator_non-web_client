@@ -15,6 +15,7 @@ class AcceleratorProjectService:
             cli_base_url='http://accelerator-api/v1/acli',
             verify_cert=True
         ):
+        
         self.user_token = user_token
 
         if verify_cert:
@@ -30,7 +31,7 @@ class AcceleratorProjectService:
     def http_client_request(self, *args, **kwargs):
         res = self.http_client.request(*args, **kwargs)
 
-        if str(res.status_code).startswith('4'):
+        if str(res.http_status).startswith('4'):
             raise AccAPIError(
                 "Accelerator api error", 
                 status_code=res.http_status, 
