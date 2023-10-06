@@ -123,7 +123,7 @@ class AcceleratorProjectService:
     def get_put_create_multipart_upload_id(self, filename):
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/create-multipart-upload-id/{filename}",
+            f"{self.cli_base_url}/create-multipart-upload-id?filename={filename}",
             headers=self.common_request_headers
         )
 
