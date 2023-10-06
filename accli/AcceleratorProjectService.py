@@ -32,7 +32,7 @@ class AcceleratorProjectService:
     def http_client_request(self, *args, **kwargs):
         res = self.http_client.request(*args, **kwargs)
 
-        if str(res.status).startswith('4'):
+        if str(res.status)[0] in ['4', '5']:
             raise AccAPIError(
                 "Accelerator api error", 
                 status_code=res.status, 
@@ -294,7 +294,8 @@ class AcceleratorProjectService:
                         app_bucket_id,
                         uniqified_filename,
                     ) = self.get_put_create_multipart_upload_id(
-                        filename, headers=headers
+                        filename, 
+                        # headers=headers
                     )
 
                 put_presigned_url = self.get_multipart_put_create_signed_url(
@@ -366,7 +367,8 @@ class AcceleratorProjectService:
 
                 if not upload_id:
                     upload_id = self.get_put_update_multipart_upload_id(
-                        bucket_object_id, headers=headers
+                        bucket_object_id, 
+                        # headers=headers
                     )
 
                 put_presigned_url = self.get_multipart_put_update_signed_url(
@@ -410,7 +412,6 @@ class AcceleratorProjectService:
             "POST", 
             f"{self.cli_base_url}/webhook-event",
             json=dict(
-                executor_id='ACCELERATOR_CELERY',
                 type='STATUS_UPDATE',
                 data=dict(
                     new_status=status
