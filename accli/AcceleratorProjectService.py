@@ -401,7 +401,7 @@ class AcceleratorProjectService:
     def update_job_status(self, status):
         headers = {
             # "Content-Type": "application/json"
-            'Content-Type': 'application/x-www-form-urlencoded'
+            # 'Content-Type': 'application/x-www-form-urlencoded'
         }
 
         headers.update(self.common_request_headers)
@@ -409,7 +409,7 @@ class AcceleratorProjectService:
         res = self.http_client_request(
             "POST", 
             f"{self.cli_base_url}/webhook-event",
-            body=dict(
+            json=dict(
                 executor_id='ACCELERATOR_CELERY',
                 type='STATUS_UPDATE',
                 data=dict(
