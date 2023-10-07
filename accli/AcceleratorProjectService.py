@@ -123,11 +123,13 @@ class AcceleratorProjectService:
     def get_put_create_multipart_upload_id(self, filename):
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/create-multipart-upload-id?filename={filename}",
+            f"{self.cli_base_url}/create-multipart-upload-id/{filename}",
             headers=self.common_request_headers
         )
 
-        return res.data.decode()
+        data = res.json()
+
+        return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
     def get_put_update_multipart_upload_id(self, bucket_object_id):
         res = self.http_client_request(
