@@ -161,7 +161,7 @@ class AcceleratorProjectService:
                 app_bucket_id=app_bucket_id,
                 filename=filename,
                 upload_id=upload_id,
-                parts=base64.b64encode(json.dumps(parts)),
+                parts=base64.b64encode(json.dumps(parts).encode()).decode(),
                 is_log_file=is_log_file
             ),
             headers=headers
