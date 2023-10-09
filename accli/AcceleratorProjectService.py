@@ -4,10 +4,12 @@ import base64
 import urllib3
 
 class AccAPIError(Exception):
-    def __init__(self, *args, **kwargs):
-        self.status_code = kwargs.pop('status_code')
-        self.response_data = kwargs.pop('response_data')
-        super().__init__(*args, **kwargs)
+    pass
+
+    # def __init__(self, *args, **kwargs):
+    #     self.status_code = kwargs.pop('status_code')
+    #     self.response_data = kwargs.pop('response_data')
+    #     super().__init__(*args, **kwargs)
 
 class AcceleratorProjectService:
     def __init__(
@@ -34,9 +36,9 @@ class AcceleratorProjectService:
 
         if str(res.status)[0] in ['4', '5']:
             raise AccAPIError(
-                "Accelerator api error", 
-                status_code=res.status, 
-                response_data=res.data
+                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
+                # status_code=res.status, 
+                # response_data=res.data
             )
         
         return res
