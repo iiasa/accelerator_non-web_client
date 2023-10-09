@@ -101,7 +101,7 @@ class AcceleratorProjectService:
             headers=self.common_request_headers
         )
 
-        return res.data.decode()
+        return res.json()
 
     def get_multipart_put_update_signed_url(
         self,
@@ -120,7 +120,7 @@ class AcceleratorProjectService:
             headers=self.common_request_headers
         )
 
-        return res.data.decode()
+        return res.json()
 
     def get_put_create_multipart_upload_id(self, filename):
         res = self.http_client_request(
