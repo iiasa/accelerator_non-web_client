@@ -61,7 +61,7 @@ class AcceleratorProjectService:
             headers=self.common_request_headers
         )
         if res.data:
-            return res.data.decode()
+            return res.json()
 
     
     def get_file_url(self, bucket_object_id):
@@ -72,7 +72,7 @@ class AcceleratorProjectService:
         )
 
         if res.data:
-            return res.data.decode()
+            return res.json()
 
 
     def get_file_stream(self, bucket_object_id):
@@ -140,7 +140,7 @@ class AcceleratorProjectService:
             headers=self.common_request_headers
         )
 
-        return res.data.decode()
+        return res.json()
 
     def complete_job_multipart_upload(
         self,
@@ -166,6 +166,8 @@ class AcceleratorProjectService:
             ),
             headers=headers
         )
+
+        return res.json()
 
     def complete_update_multipart_upload(
         self, bucket_object_id, upload_id, parts: list[tuple[str, str]]
@@ -316,7 +318,7 @@ class AcceleratorProjectService:
                 etag = part_upload_response.headers.get("etag").replace('"', "")
                 parts.append((part_number, etag))
 
-            result, created_bucket_object_id = self.complete_job_multipart_upload(
+            created_bucket_object_id = self.complete_job_multipart_upload(
                 app_bucket_id, uniqified_filename, upload_id, parts, is_log_file=is_log_file
             )
             return created_bucket_object_id
