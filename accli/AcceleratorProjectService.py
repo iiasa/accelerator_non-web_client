@@ -76,9 +76,8 @@ class AcceleratorProjectService:
 
 
     def get_file_stream(self, bucket_object_id):
-        res = self.get_file_url(bucket_object_id)
+        url = self.get_file_url(bucket_object_id)
         if url:
-            url = res.data.decode()
             resp = self.http_client_request("GET", url, preload_content=False)
             return resp
 
