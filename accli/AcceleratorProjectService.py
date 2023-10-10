@@ -135,7 +135,7 @@ class AcceleratorProjectService:
     def get_put_update_multipart_upload_id(self, bucket_object_id):
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/create-multipart-upload-id/{bucket_object_id}",
+            f"{self.cli_base_url}/update-multipart-upload-id/{bucket_object_id}",
             headers=self.common_request_headers
         )
 
@@ -182,7 +182,7 @@ class AcceleratorProjectService:
             json=dict(
                 bucket_object_id=bucket_object_id,
                 upload_id=upload_id,
-                parts=base64.b64encode(json.dumps(parts))
+                parts=base64.b64encode(json.dumps(parts).encode()).decode()
             ),
             headers=headers
         )
@@ -206,7 +206,9 @@ class AcceleratorProjectService:
 
     def abort_update_multipart_upload(self, bucket_object_id, upload_id):
         
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            # "Content-Type": "application/json"
+        }
 
         headers.update(self.common_request_headers)
 
