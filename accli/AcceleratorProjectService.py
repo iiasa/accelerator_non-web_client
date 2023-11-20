@@ -221,24 +221,62 @@ class AcceleratorProjectService:
             ),
             headers=headers
         )
-    # TODO @wrufesh ensure it requires special token
-    def register_iamc_validation(
-        self, validated_bucket_object_id, indexdb_bucket_object_id
-    ):
+   
+    # # TODO @wrufesh ensure it requires special token
+    # def register_iamc_validation(
+    #     self, validated_bucket_object_id, indexdb_bucket_object_id
+    # ):
 
+    #     headers = {"Content-Type": "application/json"}
+
+    #     headers.update(self.common_request_headers)
+
+    #     res = self.http_client_request(
+    #         "PUT", 
+    #         f"{self.cli_base_url}/register-iamc-validation",
+    #         json=dict(
+    #             validated_bucket_object_id=validated_bucket_object_id,
+    #             indexdb_bucket_object_id=indexdb_bucket_object_id
+    #         ),
+    #         headers=headers
+    #     )
+
+    def register_validation(
+        self, 
+        validated_bucket_object_id: int,
+        dataset_template_id: int,
+        validated_metadata: dict
+    ):
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
             "PUT", 
-            f"{self.cli_base_url}/register-iamc-validation",
+            f"{self.cli_base_url}/register-validation",
             json=dict(
                 validated_bucket_object_id=validated_bucket_object_id,
-                indexdb_bucket_object_id=indexdb_bucket_object_id
+                dataset_template_id=dataset_template_id,
+                validated_metadata=validated_metadata
             ),
             headers=headers
         )
+
+    def get_dataset_template_details(
+        self, 
+        dataset_template_id
+    ):
+        headers = {"Content-Type": "application/json"}
+
+        headers.update(self.common_request_headers)
+
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/dataset-template-detail/{dataset_template_id}",
+            headers=headers
+        )
+
+        return res.json()
 
       
 
