@@ -299,7 +299,7 @@ class AcceleratorProjectService:
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 5 * 1024**2, -1
+        part_size, part_count = 50 * 1024**2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -376,7 +376,7 @@ class AcceleratorProjectService:
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 5 * 1024**2, -1
+        part_size, part_count = 50 * 1024**2, -1
 
         upload_id = None
         app_bucket_id = None
