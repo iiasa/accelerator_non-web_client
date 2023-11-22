@@ -63,6 +63,15 @@ class AcceleratorProjectService:
         if res.data:
             return res.json()
 
+    def get_bucket_object_validation_details(self, bucket_object_id):
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/validation-detail/{bucket_object_id}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return res.json()
+
     
     def get_file_url(self, bucket_object_id):
         res = self.http_client_request(
