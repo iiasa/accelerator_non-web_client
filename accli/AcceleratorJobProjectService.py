@@ -11,11 +11,11 @@ class AccAPIError(Exception):
     #     self.response_data = kwargs.pop('response_data')
     #     super().__init__(*args, **kwargs)
 
-class AcceleratorProjectService:
+class AcceleratorJobProjectService:
     def __init__(
             self,
             user_token, 
-            cli_base_url='http://accelerator-api/v1/acli',
+            job_cli_base_url='http://accelerator-api/v1/ajob-cli',
             verify_cert=True
         ):
         
@@ -26,7 +26,7 @@ class AcceleratorProjectService:
         else:
             self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1)
 
-        self.cli_base_url = cli_base_url
+        self.cli_base_url = job_cli_base_url
         self.common_request_headers = {
             'x-authorization': user_token
         }

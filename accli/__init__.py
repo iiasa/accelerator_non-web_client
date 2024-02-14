@@ -1,3 +1,4 @@
-from .AcceleratorProjectService import AcceleratorProjectService
+from .AcceleratorJobProjectService import AcceleratorJobProjectService
 
-ACliService = AcceleratorProjectService
+AjobCliService = AcceleratorJobProjectService
+
