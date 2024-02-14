@@ -3,14 +3,17 @@ import glob
 import os
 import typer
 import requests
+import warnings
 from rich import print
 from typing_extensions import Annotated
 from tinydb import TinyDB, Query
 
-from .AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
+
+from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
 
+warnings.filterwarnings('ignore')
 
 app = typer.Typer()
 

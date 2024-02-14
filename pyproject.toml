@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accli"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
   { name="Wrufesh S", email="wrufesh@gmail.com" },
 ]
@@ -27,4 +27,4 @@ packages = ['accli']
 "Bug Tracker" = "https://github.com/iiasa/accli/issues"
 
 [project.scripts]
-accli = "accli.cli.app"
+accli = "accli.cli:app"
