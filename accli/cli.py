@@ -145,9 +145,9 @@ def upload_file(project_slug, accelerator_filename, local_filepath, progress, ta
 
 @app.command()
 def upload(
-    project_slug: Annotated[str, typer.Option(help="Unique Accelerator project slug.")],
-    path: Annotated[str, typer.Option(help="Folder path to upload to Accelerator.")],
-    folder_name: Annotated[str, typer.Option(help="New folder of the folder to be made in Accelerator.")],
+    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+    path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator.")],
+    folder_name: Annotated[str, typer.Argument(help="New folder of the folder to be made in Accelerator.")],
     max_workers: Annotated[int, typer.Option(help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
     
