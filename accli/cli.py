@@ -87,7 +87,7 @@ def get_size(path):
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://acceleratoapi.iiasa.ac.at", 
+    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
     webcli: Annotated[str, typer.Option(help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
