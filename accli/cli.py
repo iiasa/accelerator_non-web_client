@@ -7,6 +7,7 @@ import warnings
 from rich import print
 from typing_extensions import Annotated
 from tinydb import TinyDB, Query
+from ._version import VERSION
 
 
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
@@ -84,6 +85,13 @@ def get_size(path):
     return size
 
 
+@app.command()
+def about():
+    print("[bold cyan]This is a terminal client for Accelerator hosted on https://accelerator.iiasa.ac.at . [/bold cyan]\n")
+    print("[bold cyan]Please file feature requests and suggestions at https://github.com/iiasa/accli/issues .[/bold cyan]\n")
+    print("[bold cyan]License: The MIT License (MIT)[/bold cyan]\n")
+    print(f"[bold cyan]Version: {VERSION}[/bold cyan]\n")
+
 
 @app.command()
 def login(
@@ -91,11 +99,11 @@ def login(
     webcli: Annotated[str, typer.Option(help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
-        f"Welcome to Accelerator Terminal Client.\n"
-        f"Powered by IIASA\n"
+        f"[bold blue]Welcome to Accelerator Terminal Client.[/bold blue]\n"
+        f"[bold blue]Powered by IIASA[/bold blue]\n"
     )
 
-    print(f"Get authorization code [link={webcli}/acli-auth-code]here[/link].\n")
+    print(f"[italic]Get authorization code on following web url: {webcli}/acli-auth-code[/italic] \n")
 
     device_authorization_code = typer.prompt("Enter the authorization code?")
 
@@ -107,12 +115,12 @@ def login(
     print("")
 
     if token_response.status_code == 400:
-        print(f"ERROR: {token_response.json().get('detail')}")
+        print(f"[bold red]ERROR: {token_response.json().get('detail')}[/red]")
         raise typer.Exit(1)
 
     save_token_details(token_response.json(), server, webcli)
 
-    print("Successfully logged in.:rocket: :rocket:")
+    print("[bold green]Successfully logged in.[/bold green]:rocket: :rocket:")
 
 def upload_file(project_slug, accelerator_filename, local_filepath, progress, task, folder_name, max_workers=os.cpu_count()):
 

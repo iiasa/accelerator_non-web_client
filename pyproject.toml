@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accli"
-version = "0.1.4.1"
+version = ["version"]
 authors = [
   { name="Wrufesh S", email="wrufesh@gmail.com" },
 ]
