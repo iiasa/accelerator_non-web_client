@@ -16,7 +16,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, B
 
 warnings.filterwarnings('ignore')
 
-app = typer.Typer()
+app = typer.Typer(add_completion=False)
 
 def get_db_path():
 
