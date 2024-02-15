@@ -1,7 +1,7 @@
 import subprocess
 
 with open("accli/_version.py") as vf:
-    exec(vf.read)
+    exec(vf.read())
 
 version = globals()['VERSION']
 
