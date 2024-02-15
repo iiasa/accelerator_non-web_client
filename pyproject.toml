@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "accli"
-version = ["version"]
+dynamic = ["version"]
 authors = [
   { name="Wrufesh S", email="wrufesh@gmail.com" },
 ]
@@ -21,6 +21,9 @@ classifiers = [
 
 [tool.setuptools]
 packages = ['accli']
+
+[tool.setuptools.dynamic]
+version = {attr="accli._version.VERSION"}
 
 [project.urls]
 "Homepage" = "https://github.com/iiasa/accli"

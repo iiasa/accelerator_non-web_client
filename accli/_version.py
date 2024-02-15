@@ -1,1 +1,3 @@
-VERSION='v0.1.5'
+# Please strictly put double quote to use this info for git tag 
+# Read developer guide for git tag command with regex
+VERSION = "v0.1.5" 

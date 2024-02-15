@@ -4,7 +4,7 @@
 ## User Guide
 
 **Requirements**
-* Python >=3.6
+* Python >=3.7
 
 **Installation**
 `pip install accli --user`
@@ -22,11 +22,20 @@
 [Updating PATH on windows](https://stackoverflow.com/questions/44272416/how-to-add-a-folder-to-path-environment-variable-in-windows-10-with-screensho)
 [Updating PATH on linux](https://www.geeksforgeeks.org/how-to-set-path-permanantly-in-linux/)
 
+### Usage
+
+**Get list of available commands**
+`accli --help`
+
+**Get list of arguments specification of the command**
+`accli <command> --help`
+
 
 
 ## Developer Guide
-**Build**
+**General build and upload instructions**
 Please follow [this link.](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
 
-**Tagging**
-`git tag $(grep -E -i -o "(\"|')(.*?)(\"|')" accli/_version.py)`
+**Release process**
+1. Commit with right version on accli/_version.py
+2. Run 'python scripts/tag_and_build.py'
