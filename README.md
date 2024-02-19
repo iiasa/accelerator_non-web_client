@@ -25,10 +25,10 @@
 ### Usage
 
 **Get list of available commands**
-`accli --help`
+`accli --help` or `python -m accli --help`
 
 **Get list of arguments specification of the command**
-`accli <command> --help`
+`accli <command> --help` or `python -m accli <command> --help`
 
 
 
@@ -40,5 +40,5 @@ Please follow [this link.](https://packaging.python.org/en/latest/tutorials/pack
 1. Commit with right version on accli/_version.py
 2. Run 'python scripts/tag.py'
 3. python -m build
-4. python scripts/nutika-build.py 
+
 
