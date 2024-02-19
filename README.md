@@ -4,7 +4,7 @@
 ## User Guide
 
 **Requirements**
-* Python >=3.9.8
+* Python >=3.7.17
 
 **Installation**
 `pip install accli --user`

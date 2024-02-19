@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,7 @@ authors = [
 description = "IIASA Accelerator Client"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.6.15"
+requires-python = ">=3.7.17"
 dependencies = ['urllib3', 'typer[all]', 'tinydb', 'requests']
 classifiers = [
     "Programming Language :: Python :: 3",
