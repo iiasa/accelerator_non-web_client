@@ -4,7 +4,9 @@ import urllib3
 import json
 import base64
 import concurrent.futures
+from typing import List, Tuple
 from rich.progress import Progress
+
 
 
 class AccAPIError(Exception):
@@ -111,7 +113,7 @@ class AcceleratorTerminalCliProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: list[tuple[str, str]]
+        parts: List[Tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 

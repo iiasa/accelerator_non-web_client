@@ -2,6 +2,7 @@ import requests
 import json
 import base64
 import urllib3
+from typing import List, Tuple
 
 class AccAPIError(Exception):
     pass
@@ -155,7 +156,7 @@ class AcceleratorJobProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: list[tuple[str, str]],
+        parts: List[Tuple[str, str]],
         is_log_file=False
     ):
         headers = {"Content-Type": "application/json"}
@@ -178,7 +179,7 @@ class AcceleratorJobProjectService:
         return res.json()
 
     def complete_update_multipart_upload(
-        self, bucket_object_id, upload_id, parts: list[tuple[str, str]]
+        self, bucket_object_id, upload_id, parts: List[Tuple[str, str]]
     ):
 
         headers = {"Content-Type": "application/json"}

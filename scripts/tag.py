@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 with open("accli/_version.py") as vf:
@@ -14,11 +15,4 @@ subprocess.run(
             check=True
         )
 
-subprocess.run(
-            [
-                "python", 
-                "-m",
-                "build"
-            ],
-            check=True
-        )
+

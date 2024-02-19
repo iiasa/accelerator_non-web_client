@@ -4,7 +4,7 @@
 ## User Guide
 
 **Requirements**
-* Python >=3.7
+* Python >=3.9.8
 
 **Installation**
 `pip install accli --user`
@@ -38,4 +38,7 @@ Please follow [this link.](https://packaging.python.org/en/latest/tutorials/pack
 
 **Release process**
 1. Commit with right version on accli/_version.py
-2. Run 'python scripts/tag_and_build.py'
+2. Run 'python scripts/tag.py'
+3. python -m build
+4. python scripts/nutika-build.py 
+

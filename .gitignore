@@ -3,3 +3,4 @@ dist
 .pypirc
 *.egg-info/
 __pycache__
+.venv

@@ -2,3 +2,4 @@ urllib3
 requests
 typer[all]
 tinydb
+twine==1.15.0
