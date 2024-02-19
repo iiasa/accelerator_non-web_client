@@ -1,4 +1,5 @@
 import re
+import click
 import glob
 import os
 import typer
@@ -16,7 +17,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, B
 
 warnings.filterwarnings('ignore')
 
-app = typer.Typer(add_completion=False)
+
+app = typer.Typer(
+    add_completion=False, 
+    pretty_exceptions_show_locals=False, 
+    no_args_is_help=True
+)
 
 def get_db_path():
 
@@ -99,11 +105,11 @@ def login(
     webcli: Annotated[str, typer.Option(help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
-        f"[bold blue]Welcome to Accelerator Terminal Client.[/bold blue]\n"
-        f"[bold blue]Powered by IIASA[/bold blue]\n"
+        f"[bold cyan]Welcome to Accelerator Terminal Client.[/bold cyan]\n"
+        f"[bold cyan]Powered by IIASA[/bold cyan]\n"
     )
 
-    print(f"[italic]Get authorization code on following web url: {webcli}/acli-auth-code[/italic] \n")
+    print(f"[italic]Get authorization code on following web url: [cyan]{webcli}/acli-auth-code[cyan][/italic] \n")
 
     device_authorization_code = typer.prompt("Enter the authorization code?")
 
