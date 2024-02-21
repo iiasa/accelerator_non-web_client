@@ -182,11 +182,17 @@ def upload(
             for local_file_path in glob.iglob(f"{path}/**/*.*", recursive=True):
                 accelerator_filename = os.path.relpath(local_file_path, path)
 
+                if os.name == 'nt':
+                    accelerator_filename = accelerator_filename.replace('\\', '/')
+
                 progress.update(
                     upload_task, 
                     description=f"[cyan]Uploading {local_file_path} \t"
                 )
 
+                
+                if not os.path.isfile(local_file_path):
+                    continue
                 upload_file(project_slug, accelerator_filename, local_file_path,  progress, upload_task, folder_name, max_workers=max_workers)
         elif (os.path.isfile(path)):
             raise NotImplementedError('Only folder can be uploaded. File upload is not implemented.')
