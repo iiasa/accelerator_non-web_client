@@ -36,7 +36,7 @@
 
 `Usage: accli [OPTIONS] COMMAND [ARGS]...`
 
-*Note: You may need to prepend the coommad with either `./`(in linux) or `.\`(in winodws).*
+*Note: You may need to prepend the command with either `./`(in linux) or `.\`(in winodws).*
 
 
 ## Developer Guide
