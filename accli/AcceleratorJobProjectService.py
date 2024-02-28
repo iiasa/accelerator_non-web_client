@@ -22,10 +22,12 @@ class AcceleratorJobProjectService:
         
         self.user_token = user_token
 
+        retries = urllib3.util.Retry(total=10, backoff_factor=1)
+
         if verify_cert:
-            self.http_client = urllib3.poolmanager.PoolManager(num_pools=1)
+            self.http_client = urllib3.poolmanager.PoolManager(num_pools=1, retries=retries)
         else:
-            self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1)
+            self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1, retries=retries)
 
         self.cli_base_url = job_cli_base_url
         self.common_request_headers = {
