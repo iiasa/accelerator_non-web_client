@@ -157,7 +157,7 @@ def upload(
     max_workers: Annotated[int, typer.Option(help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
     
-    if not re.fullmatch(r'\w+', folder_name):
+    if not re.fullmatch(r'[a-zA-Z0-9\-\_]+', folder_name):
         raise ValueError("Folder name is invalid.")
 
 
