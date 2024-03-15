@@ -8,6 +8,8 @@ import warnings
 from rich import print
 from typing_extensions import Annotated
 from tinydb import TinyDB, Query
+
+from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from ._version import VERSION
 
 
@@ -136,7 +138,7 @@ def upload_file(project_slug, accelerator_filename, local_filepath, progress, ta
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
-        cli_base_url=f"{server_url}/v1/aterm-cli",
+        server_url=server_url,
         verify_cert=False
     )
 
@@ -199,4 +201,28 @@ def upload(
         else:
             print("ERROR: No such file or directory.")
             typer.Exit(1)
+
+@app.command()
+def validate(
+    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+    template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
+    filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
+    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+):
+    
+
+    term_cli_project_service = AcceleratorTerminalCliProjectService(
+        user_token="",
+        server_url=server,
+        verify_cert=False
+    )
+
+    validate = CsvRegionalTimeseriesValidator(
+        project_slug=project_slug,
+        dataset_template_slug=template_slug,
+        input_filepath=filepath,
+        project_service=term_cli_project_service,
+    )
+
+    validate()
 

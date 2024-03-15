@@ -22,7 +22,7 @@ class AcceleratorTerminalCliProjectService:
     def __init__(
             self,
             user_token, 
-            cli_base_url='http://accelerator-api/v1/aterm-cli',
+            server_url,
             verify_cert=True
         ):
         
@@ -35,7 +35,8 @@ class AcceleratorTerminalCliProjectService:
         else:
             self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1, retries=retries)
 
-        self.cli_base_url = cli_base_url
+        self.server_url = server_url
+        self.cli_base_url = f"{self.server_url}/v1/aterm-cli"
         self.common_request_headers = {
             'x-authorization': user_token
         }
@@ -60,6 +61,21 @@ class AcceleratorTerminalCliProjectService:
                 f"{self.cli_base_url}/{project_slug}/file-stat/",
                 json=dict(filename=filename),
                 headers=self.common_request_headers
+            )
+        except AccAPIError as err:
+            if err.status_code == 404:
+                return None
+            else:
+                raise err
+
+        return res.json()
+    
+    def get_dataset_template_details(self, project_slug, template_slug):
+        
+        try:
+            res = self.http_client_request(
+                "GET", 
+                f"{self.server_url}/v1/projects/{project_slug}/dataset-templates/{template_slug}/by-slug/",
             )
         except AccAPIError as err:
             if err.status_code == 404:
