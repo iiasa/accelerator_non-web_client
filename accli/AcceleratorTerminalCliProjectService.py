@@ -70,6 +70,20 @@ class AcceleratorTerminalCliProjectService:
 
         return res.json()
     
+    def dispatch(self, project_slug, job_description):
+        
+        try:
+            res = self.http_client_request(
+                "POST", 
+                f"{self.cli_base_url}/{project_slug}/jobs/dispatch/",
+                json=job_description,
+                headers=self.common_request_headers
+            )
+        except AccAPIError as err:
+                raise err
+
+        return res.json()['job_id']
+    
     def get_dataset_template_details(self, project_slug, template_slug):
         
         try:

@@ -5,6 +5,7 @@ import os
 import typer
 import requests
 import warnings
+import importlib.util
 from rich import print
 from typing_extensions import Annotated
 from tinydb import TinyDB, Query
@@ -225,4 +226,46 @@ def validate(
     )
 
     validate()
+
+@app.command()
+def dispatch(
+    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+    # experiment_name: Annotated[str, typer.Argument(help="Experiment or simulation name. Please put name in quote it includes space(s).")],
+    workflow_file: Annotated[str, typer.Argument(help="Python workflow filepath.")],
+    root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
+    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+):
+
+    spec = importlib.util.spec_from_file_location("workflow", workflow_file)
+
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    job_to_dispatch = getattr(module, root_task_variable)
+
+
+    if not job_to_dispatch:
+        raise ValueError(f"No root task variable found with name {root_task_variable}")
+    
+    print(job_to_dispatch.description)
+
+    access_token = get_token()
+
+    server_url = get_server_url()
+
+    term_cli_project_service = AcceleratorTerminalCliProjectService(
+        user_token=access_token,
+        server_url=server_url,
+        verify_cert=False
+    )
+
+    root_job_id = term_cli_project_service.dispatch(
+        project_slug,
+        job_to_dispatch.description
+    )
+
+    print(f"Dispatched root job #ID: {root_job_id}")
+
+
 
