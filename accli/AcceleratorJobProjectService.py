@@ -92,6 +92,36 @@ class AcceleratorJobProjectService:
         if url:
             resp = self.http_client_request("GET", url, preload_content=False)
             return resp
+        
+    def add_log_file(self, data: bytes, filename):
+        res = self.http_client_request(
+            "GET",
+            f"{self.cli_base_url}/presigned-upload-url/?filename={filename}",
+            headers=self.common_request_headers
+        ).json()
+
+        upload_url = res['upload_url']
+        app_bucket_id = res['app_bucket_id']
+        res_filename = res['filename']
+
+        requests.put(
+            upload_url,
+            data=data,
+            # headers=headers,
+            verify=False,
+        )
+
+        self.http_client_request(
+            "POST",
+            f"{self.cli_base_url}/register-log-file/",
+            json=dict(
+                filename=res_filename,
+                app_bucket_id=app_bucket_id
+            ),
+            headers=self.common_request_headers
+        )
+
+        
 
     def get_multipart_put_create_signed_url(
         self,

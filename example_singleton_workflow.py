@@ -11,3 +11,5 @@ task = WKubeTask(
     required_storage_workflow=1024*1024,
     timeout=60*60
 )
+
+# python -m accli dispatch forest-navigator example_singleton_workflow.py task --server=http://web_be:8000
