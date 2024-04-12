@@ -16,7 +16,7 @@ class AcceleratorJobProjectService:
     def __init__(
             self,
             user_token, 
-            job_cli_base_url='http://accelerator-api/v1/ajob-cli',
+            server_url='http://accelerator-api.iiasa.ac.at',
             verify_cert=True
         ):
         
@@ -29,7 +29,7 @@ class AcceleratorJobProjectService:
         else:
             self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1, retries=retries)
 
-        self.cli_base_url = job_cli_base_url
+        self.cli_base_url = f"{server_url}/v1/ajob-cli"
         self.common_request_headers = {
             'x-authorization': user_token
         }
