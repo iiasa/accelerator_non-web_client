@@ -46,6 +46,7 @@ Please follow [this link.](https://packaging.python.org/en/latest/tutorials/pack
 **Release process**
 1. Commit with right version on accli/_version.py
 2. Run 'python scripts/tag.py'
-3. python -m build
+3. `python -m build`
+4. `twine upload -r pypi -u __token__ -p <password-or-token> ./dist/*`
 
 
