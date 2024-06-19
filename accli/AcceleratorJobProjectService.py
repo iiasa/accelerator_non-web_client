@@ -1,7 +1,11 @@
+import os
+import io
+import typing
 import requests
 import json
 import base64
 import urllib3
+from pathlib import Path
 from typing import List, Tuple
 
 class AccAPIError(Exception):
@@ -506,3 +510,46 @@ class AcceleratorJobProjectService:
             ),
             headers=headers
         )
+
+class Fs:
+    @staticmethod
+    def write_stream_remote(filestream, dest_filepath, user_token, server_url):
+
+        accelerator_job_service = AcceleratorJobProjectService(
+            user_token, 
+            server_url=server_url,
+            verify_cert=True
+        )
+
+        accelerator_job_service.add_filestream_as_job_output(
+            dest_filepath,
+            filestream
+        )
+
+    @staticmethod
+    def write_stream_local(filestream, dest_filepath):
+        with open(dest_filepath, 'wb') as file:
+            file.write(filestream.getvalue())
+
+    @staticmethod
+    def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):
+        user_token = os.environ.get("ACC_JOB_JOB_TOKEN", None)
+        server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
+
+        if isinstance(source, io.BytesIO):
+            if (user_token and server_url):
+                Fs.write_stream_remote(source, dest_filepath, user_token, server_url)
+            else:
+                Fs.write_stream_local(source, dest_filepath)
+        else:
+            if type(source) != str:
+                raise ValueError("Unknown source argument")
+            source_path = Path(source)
+            if not source_path.exists():
+                raise ValueError("Source path does not exist")
+
+            with open(source, 'wb') as fstream:
+                if (user_token and server_url):
+                    Fs.write_stream_remote(fstream, dest_filepath, user_token, server_url)
+                else:
+                    Fs.write_stream_local(fstream, dest_filepath)

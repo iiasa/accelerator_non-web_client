@@ -70,6 +70,16 @@ class AcceleratorTerminalCliProjectService:
 
         return res.json()
     
+    def get_github_app_token(self, project_slug):
+        
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/github-app-token/",
+            headers=self.common_request_headers
+        )
+
+        return res.json()
+    
     def dispatch(self, project_slug, job_description):
         
         try:

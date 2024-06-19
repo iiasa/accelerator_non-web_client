@@ -4,7 +4,7 @@ from accli.cli import app
 
 from accli.AcceleratorTaskDispatcher import *
 
-from accli.AcceleratorJobProjectService import AcceleratorJobProjectService
+from accli.AcceleratorJobProjectService import AcceleratorJobProjectService, Fs
 
 AjobCliService = AcceleratorJobProjectService
 

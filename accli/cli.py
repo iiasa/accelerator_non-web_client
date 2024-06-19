@@ -8,11 +8,11 @@ import warnings
 import importlib.util
 from rich import print
 from typing_extensions import Annotated
-from tinydb import TinyDB, Query
+
+from accli.token import save_token_details, get_token, get_server_url, set_github_app_token
 
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from ._version import VERSION
-
 
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 
@@ -20,68 +20,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, B
 
 warnings.filterwarnings('ignore')
 
-
 app = typer.Typer(
     add_completion=False, 
     pretty_exceptions_show_locals=False, 
     no_args_is_help=True
 )
-
-def get_db_path():
-
-    home = os.path.expanduser("~")
-    token_directory = f"{home}/.accli"
-
-    if not os.path.exists(token_directory):
-        os.makedirs(token_directory)
-    
-    return f"{token_directory}/data.json"
-
-
-def save_token_details(token, server_url, webcli_url):
-
-    db_path = get_db_path()
-
-    try:
-        os.remove(db_path)
-    except OSError:
-        pass
-
-    db = TinyDB(db_path)
-    db.insert({
-        'token': token,
-        'server_url': server_url,
-        'webcli_url': webcli_url
-    })
-
-def get_token():
-    db_path = get_db_path()
-
-    db = TinyDB(db_path)
-
-    for item in db:
-        token = item.get('token')
-        if token:
-            break
-
-    if not token:
-        print("Token does not exists. Please login.")
-    return token
-
-
-def get_server_url():
-    db_path = get_db_path()
-
-    db = TinyDB(db_path)
-
-    for item in db:
-        server_url = item.get('server_url')
-        if server_url:
-            break
-
-    if not server_url:
-        print("Server url does not exists. Please login.")
-    return server_url
 
 
 def get_size(path):
@@ -159,6 +102,9 @@ def upload(
     folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
     max_workers: Annotated[int, typer.Option(help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
+
+
+    #TODO make user free to put anywere except for reserved folder
     
     if not re.fullmatch(r'[a-zA-Z0-9\-\_]+', folder_name):
         raise ValueError("Folder name is invalid.")
@@ -235,6 +181,20 @@ def dispatch(
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
     server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
 ):
+    
+    access_token = get_token()
+
+    server_url = get_server_url()
+
+    term_cli_project_service = AcceleratorTerminalCliProjectService(
+        user_token=access_token,
+        server_url=server_url,
+        verify_cert=False
+    )
+
+    github_app_token = term_cli_project_service.get_github_app_token(project_slug)
+    set_github_app_token(github_app_token)
+
 
     spec = importlib.util.spec_from_file_location("workflow", workflow_file)
 
@@ -250,15 +210,6 @@ def dispatch(
     
     print(job_to_dispatch.description)
 
-    access_token = get_token()
-
-    server_url = get_server_url()
-
-    term_cli_project_service = AcceleratorTerminalCliProjectService(
-        user_token=access_token,
-        server_url=server_url,
-        verify_cert=False
-    )
 
     root_job_id = term_cli_project_service.dispatch(
         project_slug,

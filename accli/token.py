@@ -1,0 +1,77 @@
+import os
+from tinydb import TinyDB, Query
+
+def get_db_path():
+
+    home = os.path.expanduser("~")
+    token_directory = f"{home}/.accli"
+
+    if not os.path.exists(token_directory):
+        os.makedirs(token_directory)
+    
+    return f"{token_directory}/data.json"
+
+
+def save_token_details(token, server_url, webcli_url):
+
+    db_path = get_db_path()
+
+    try:
+        os.remove(db_path)
+    except OSError:
+        pass
+
+    db = TinyDB(db_path)
+    db.insert({
+        'token': token,
+        'server_url': server_url,
+        'webcli_url': webcli_url
+    })
+
+def get_token():
+    db_path = get_db_path()
+
+    db = TinyDB(db_path)
+
+    for item in db:
+        token = item.get('token')
+        if token:
+            break
+
+    if not token:
+        print("Token does not exists. Please login.")
+    return token
+
+def get_github_app_token():
+    db_path = get_db_path()
+
+    db = TinyDB(db_path)
+
+    for item in db:
+        token = item.get('github_app_token')
+        if token:
+            break
+
+    if not token:
+        print("Github app token does not exists.")
+    return token
+
+def set_github_app_token(github_app_token):
+    db_path = get_db_path()
+    db = TinyDB(db_path)
+    db.update({'github_app_token': github_app_token}, doc_ids=[1])
+
+
+def get_server_url():
+    db_path = get_db_path()
+
+    db = TinyDB(db_path)
+
+    for item in db:
+        server_url = item.get('server_url')
+        if server_url:
+            break
+
+    if not server_url:
+        print("Server url does not exists. Please login.")
+    return server_url
