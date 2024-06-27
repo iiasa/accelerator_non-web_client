@@ -70,6 +70,16 @@ class AcceleratorTerminalCliProjectService:
 
         return res.json()
     
+    def get_file_url_from_repo(self, filename):
+        project_slug = filename.split('/')[0]
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return res.json()
+    
     def get_github_app_token(self, project_slug):
         
         res = self.http_client_request(

@@ -1,7 +1,9 @@
-FROM python:3.11.2
+FROM osgeo/gdal:ubuntu-full-3.6.3
 
-WORKDIR /app
+RUN apt update -y
 
-COPY . .
+RUN apt install -y  python3-pip git
 
-CMD python -c "import task; task.task(1,2,3, location='iiasa')"
+COPY ./requirements.txt /app/requirements.txt
+
+RUN pip install -r /app/requirements.txt

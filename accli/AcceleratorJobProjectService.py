@@ -58,6 +58,16 @@ class AcceleratorJobProjectService:
         )
         return res.json()
     
+    def get_file_url_from_repo(self, filename):
+        project_slug = filename.split('/')[0]
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return res.json()
+    
     def get_dataset_type(self, *args, **kwargs):
         return self.get_bucket_object_validation_type(*args, **kwargs)
 
@@ -530,6 +540,25 @@ class Fs:
     def write_stream_local(filestream, dest_filepath):
         with open(dest_filepath, 'wb') as file:
             file.write(filestream.getvalue())
+
+    @staticmethod
+    def get_file_url(remote_filepath):
+        user_token = os.environ.get("ACC_JOB_JOB_TOKEN", None)
+        server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
+
+        if not (user_token and server_url):
+            raise ValueError("Remote data repository credentials not found.")
+        
+        accelerator_job_service = AcceleratorJobProjectService(
+            user_token, 
+            server_url=server_url,
+            verify_cert=True
+        )
+
+        return accelerator_job_service.get_file_url_from_repo(
+            remote_filepath
+        )
+        
 
     @staticmethod
     def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):

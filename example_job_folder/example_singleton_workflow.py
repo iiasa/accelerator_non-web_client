@@ -3,12 +3,16 @@ from accli import WKubeTask
 task = WKubeTask(
     job_folder='./example_job_folder',
     docker_filename='Dockerfile',
-    command="python -c \"import task; task.task(1,2,3, location='singleton')\"",
+    command="python remote_converter.py",
     required_cores=1,
     required_ram=1024*1024*512,
     required_storage_local=1024*1024,
     required_storage_workflow=1024*1024,
-    timeout=60*60
+    timeout=60*60,
+    conf={
+        "INPUT_FILE": "forest-navigator/SpatialX/10gb.nc",
+        "VALIDATION_TEMPLATE": "nc-nu"
+    }
 )
 
 
