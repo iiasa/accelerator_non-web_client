@@ -16,6 +16,16 @@ class AccAPIError(Exception):
     #     self.response_data = kwargs.pop('response_data')
     #     super().__init__(*args, **kwargs)
 
+retries = urllib3.util.Retry(total=10, backoff_factor=1)
+
+http_client = urllib3.poolmanager.PoolManager(
+    num_pools=20, retries=retries
+)
+
+http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
+    cert_reqs="CERT_NONE", num_pools=20, retries=retries
+)
+
 class AcceleratorJobProjectService:
     def __init__(
             self,
@@ -26,12 +36,10 @@ class AcceleratorJobProjectService:
         
         self.user_token = user_token
 
-        retries = urllib3.util.Retry(total=10, backoff_factor=1)
-
         if verify_cert:
-            self.http_client = urllib3.poolmanager.PoolManager(num_pools=1, retries=retries)
+            self.http_client = http_client
         else:
-            self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1, retries=retries)
+            self.http_client = http_client_wo_cert_verification
 
         self.cli_base_url = f"{server_url}/v1/ajob-cli"
         self.common_request_headers = {

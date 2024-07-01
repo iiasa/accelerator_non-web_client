@@ -10,7 +10,7 @@ task = WKubeTask(
     required_storage_workflow=1024*1024,
     timeout=60*60,
     conf={
-        "INPUT_FILE": "forest-navigator/SpatialX/10gb.nc",
+        "INPUT_FILE": "brightspace/SpatialX/10gb.nc",
         "VALIDATION_TEMPLATE": "nc-nu"
     }
 )
