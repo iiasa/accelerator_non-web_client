@@ -4,7 +4,7 @@ import hashlib
 import shutil
 import tempfile
 from typing import Optional, List, Dict
-from pydantic import BaseModel, root_validator
+from pydantic.v1 import BaseModel, root_validator
 
 from accli.token import get_github_app_token
 

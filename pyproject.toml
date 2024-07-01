@@ -12,7 +12,7 @@ description = "IIASA Accelerator Client"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.7.17"
-dependencies = ['urllib3', 'typer[all]', 'tinydb', 'requests', 'jsonschema', 'pydantic==1.10.13', 'gitpython']
+dependencies = ['urllib3', 'typer[all]', 'tinydb', 'requests', 'jsonschema', 'pydantic', 'gitpython']
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

@@ -16,4 +16,4 @@ task = WKubeTask(
 )
 
 
-# python -m accli dispatch forest-navigator example_singleton_workflow.py task --server=http://web_be:8000
+# python -m accli dispatch brightspace example_job_folder/example_singleton_workflow.py task --server=http://web_be:8000
