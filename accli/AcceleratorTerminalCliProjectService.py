@@ -18,6 +18,16 @@ class AccAPIError(Exception):
             self.response = response
             self.status_code = status_code
 
+retries = urllib3.util.Retry(total=10, backoff_factor=1)
+
+http_client = urllib3.poolmanager.PoolManager(
+    num_pools=20, retries=retries
+)
+
+http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
+    cert_reqs="CERT_NONE", num_pools=20, retries=retries
+)
+
 class AcceleratorTerminalCliProjectService:
     def __init__(
             self,
@@ -28,12 +38,10 @@ class AcceleratorTerminalCliProjectService:
         
         self.user_token = user_token
 
-        retries = urllib3.util.Retry(total=10, backoff_factor=1)
-
         if verify_cert:
-            self.http_client = urllib3.poolmanager.PoolManager(num_pools=1, retries=retries)
+            self.http_client = http_client
         else:
-            self.http_client = urllib3.poolmanager.PoolManager(cert_reqs="CERT_NONE", num_pools=1, retries=retries)
+            self.http_client = http_client_wo_cert_verification
 
         self.server_url = server_url
         self.cli_base_url = f"{self.server_url}/v1/aterm-cli"
