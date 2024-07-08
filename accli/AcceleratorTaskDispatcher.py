@@ -139,6 +139,8 @@ class WKubeTaskKwargs(BaseModel):
 
     conf: Dict[str,str] = {}
 
+    build_timeout: Optional[int]
+
     def dict(self, *args, **kwargs):
         result = super().dict(*args, **kwargs)
         if 'job_folder' in result:

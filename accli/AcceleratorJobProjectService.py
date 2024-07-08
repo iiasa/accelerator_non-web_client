@@ -118,13 +118,14 @@ class AcceleratorJobProjectService:
     def add_log_file(self, data: bytes, filename):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/presigned-upload-url/?filename={filename}",
+            f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
             headers=self.common_request_headers
         ).json()
 
         upload_url = res['upload_url']
         app_bucket_id = res['app_bucket_id']
         res_filename = res['filename']
+        is_healthy = res['is_healthy']
 
         requests.put(
             upload_url,
@@ -142,6 +143,9 @@ class AcceleratorJobProjectService:
             ),
             headers=self.common_request_headers
         )
+
+        if not is_healthy:
+            os.Exit(1)
 
         
 
@@ -570,7 +574,7 @@ class Fs:
 
     @staticmethod
     def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):
-        user_token = os.environ.get("ACC_JOB_JOB_TOKEN", None)
+        user_token = os.environ.get("ACC_JOB_TOKEN", None)
         server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 
         if isinstance(source, io.BytesIO):
