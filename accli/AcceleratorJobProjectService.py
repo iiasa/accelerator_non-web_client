@@ -1,5 +1,6 @@
 import os
 import io
+import sys
 import typing
 import requests
 import json
@@ -47,14 +48,20 @@ class AcceleratorJobProjectService:
         }
 
     def http_client_request(self, *args, **kwargs):
-        res = self.http_client.request(*args, **kwargs)
+        try:
+            res = self.http_client.request(*args, **kwargs)
 
-        if str(res.status)[0] in ['4', '5']:
-            raise AccAPIError(
-                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
-                # status_code=res.status, 
-                # response_data=res.data
-            )
+            if str(res.status)[0] in ['4', '5']:
+                print(
+                    f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
+                    # status_code=res.status, 
+                    # response_data=res.data
+                )
+
+                sys.exit(1)
+        except:
+            print('Unable to reach control server.')
+            sys.exit(1)
         
         return res
 
@@ -145,7 +152,7 @@ class AcceleratorJobProjectService:
         )
 
         if not is_healthy:
-            os.Exit(1)
+            sys.exit(1)
 
         
 
