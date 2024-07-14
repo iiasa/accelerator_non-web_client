@@ -116,6 +116,18 @@ class AcceleratorJobProjectService:
         if url:
             resp = self.http_client_request("GET", url, preload_content=False)
             return resp
+
+    def check_job_health(self):
+        try:
+            res = self.http_client_request(
+                "GET",
+                f"{self.cli_base_url}/is-healthy/",
+                headers=self.common_request_headers
+            ).json()
+        except Exception as err:
+            raise UnhealthyControlServerError(str(err))
+        
+        return res
         
     def add_log_file(self, data: bytes, filename):
         try:
