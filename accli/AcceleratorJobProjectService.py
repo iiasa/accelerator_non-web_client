@@ -17,6 +17,9 @@ class AccAPIError(Exception):
     #     self.response_data = kwargs.pop('response_data')
     #     super().__init__(*args, **kwargs)
 
+class UnhealthyControlServerError(Exception):
+    pass
+
 retries = urllib3.util.Retry(total=10, backoff_factor=1)
 
 http_client = urllib3.poolmanager.PoolManager(
@@ -48,21 +51,13 @@ class AcceleratorJobProjectService:
         }
 
     def http_client_request(self, *args, **kwargs):
-        try:
-            res = self.http_client.request(*args, **kwargs)
-
-            if str(res.status)[0] in ['4', '5']:
-                print(
-                    f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
-                    # status_code=res.status, 
-                    # response_data=res.data
-                )
-
-                sys.exit(1)
-        except:
-            print('Unable to reach control server.')
-            sys.exit(1)
         
+        res = self.http_client.request(*args, **kwargs)
+
+        if str(res.status)[0] in ['4', '5']:
+            raise AccAPIError(
+                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
+            )
         return res
 
     def get_file_stat(self, bucket_object_id):
@@ -123,11 +118,14 @@ class AcceleratorJobProjectService:
             return resp
         
     def add_log_file(self, data: bytes, filename):
-        res = self.http_client_request(
-            "GET",
-            f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
-            headers=self.common_request_headers
-        ).json()
+        try:
+            res = self.http_client_request(
+                "GET",
+                f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
+                headers=self.common_request_headers
+            ).json()
+        except Exception as err:
+            raise UnhealthyControlServerError(str(err))
 
         upload_url = res['upload_url']
         app_bucket_id = res['app_bucket_id']
@@ -141,18 +139,21 @@ class AcceleratorJobProjectService:
             verify=False,
         )
 
-        self.http_client_request(
-            "POST",
-            f"{self.cli_base_url}/register-log-file/",
-            json=dict(
-                filename=res_filename,
-                app_bucket_id=app_bucket_id
-            ),
-            headers=self.common_request_headers
-        )
+        try:
+            self.http_client_request(
+                "POST",
+                f"{self.cli_base_url}/register-log-file/",
+                json=dict(
+                    filename=res_filename,
+                    app_bucket_id=app_bucket_id
+                ),
+                headers=self.common_request_headers
+            )
+        except Exception as err:
+            raise UnhealthyControlServerError(str(err))
 
         if not is_healthy:
-            sys.exit(1)
+            raise UnhealthyControlServerError('Unhealthy control server.')
 
         
 
