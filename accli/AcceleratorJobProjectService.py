@@ -127,7 +127,8 @@ class AcceleratorJobProjectService:
         except Exception as err:
             raise UnhealthyControlServerError(str(err))
         
-        return res
+        is_healthy = res['is_healthy']
+        return is_healthy
         
     def add_log_file(self, data: bytes, filename):
         try:
