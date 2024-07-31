@@ -78,3 +78,4 @@ with of as f:
 #                 quiet=True,
 #             )
 # Fs.write_file("my-output-cog.tif", "myoutput.tif")
+# Fs.write_file("my-output-cog.tif", "myoutput.tif")

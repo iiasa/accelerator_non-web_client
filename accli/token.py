@@ -61,6 +61,25 @@ def set_github_app_token(github_app_token):
     db = TinyDB(db_path)
     db.update({'github_app_token': github_app_token}, doc_ids=[1])
 
+def set_project_slug(project_slug):
+    db_path = get_db_path()
+    db = TinyDB(db_path)
+    db.update({'project_slug': project_slug}, doc_ids=[1])
+
+def get_project_slug():
+    db_path = get_db_path()
+
+    db = TinyDB(db_path)
+
+    for item in db:
+        project_slug = item.get('project_slug')
+        if project_slug:
+            break
+
+    if not project_slug:
+        print("project slug was not set.")
+    return project_slug
+
 
 def get_server_url():
     db_path = get_db_path()

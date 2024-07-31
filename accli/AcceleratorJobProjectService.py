@@ -576,7 +576,7 @@ class Fs:
 
     @staticmethod
     def get_file_url(remote_filepath):
-        user_token = os.environ.get("ACC_JOB_JOB_TOKEN", None)
+        user_token = os.environ.get("ACC_JOB_TOKEN", None)
         server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 
         if not (user_token and server_url):

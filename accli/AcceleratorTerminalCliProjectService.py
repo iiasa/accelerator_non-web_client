@@ -98,6 +98,19 @@ class AcceleratorTerminalCliProjectService:
 
         return res.json()
     
+    def get_jobstore_push_url(self, project_slug, filename):
+        
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/jobstore-push-url/?filename={filename}",
+            headers=self.common_request_headers
+        )
+
+        if res.status == 409 or res.status == '409':
+            return None
+
+        return res.json()
+    
     def dispatch(self, project_slug, job_description):
         
         try:

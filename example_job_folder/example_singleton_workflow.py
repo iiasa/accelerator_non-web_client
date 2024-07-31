@@ -3,7 +3,7 @@ from accli import WKubeTask
 task = WKubeTask(
     job_folder='./example_job_folder',
     docker_filename='Dockerfile',
-    command="python remote_converter.py",
+    command="python /app/remote_converter.py",
     required_cores=1,
     required_ram=1024*1024*512,
     required_storage_local=1024*1024,

@@ -1,37 +1,46 @@
 import git
 import os
+import zipfile
 import hashlib
 import shutil
 import tempfile
+import requests
 from typing import Optional, List, Dict
 from pydantic.v1 import BaseModel, root_validator
-
-from accli.token import get_github_app_token
+from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
+from accli.token import get_github_app_token, get_token, get_server_url, get_project_slug
 
 FOLDER_JOB_REPO_URL = 'https://github.com/IIASA-Accelerator/wkube-job.git'
 
-def hash_folder(folder_path):
-    md5_hash = hashlib.md5()
-    sha256_hash = hashlib.sha256()
 
-    for root, _, files in os.walk(folder_path):
-        for file_name in files:
-            file_path = os.path.join(root, file_name)
-            try:
+def compress_folder(folder_path, output_path):
+    # Fixed timestamp for normalization
+    fixed_time = (1980, 1, 1, 0, 0, 0)
+
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(folder_path):
+            dirs.sort()
+            files.sort()
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, start=folder_path)
+                # Add file to zip with fixed timestamp
+                info = zipfile.ZipInfo(arcname)
+                info.date_time = fixed_time
+                info.external_attr = 0o600 << 16  # Set file permissions
                 with open(file_path, 'rb') as f:
-                    # Read and update MD5 and SHA256 hash object with file content
-                    for chunk in iter(lambda: f.read(4096), b""):
-                        md5_hash.update(chunk)
-                        sha256_hash.update(chunk)
-            except IOError:
-                # Handle read error (if any)
-                print(f"Error reading file: {file_path}")
+                    
+                    zipf.writestr(info, f.read(), zipfile.ZIP_DEFLATED)
 
-    # Get hexadecimal digest of hashes
-    md5_digest = md5_hash.hexdigest()
-    # sha256_digest = sha256_hash.hexdigest()
+def get_file_sha1(file_path):
+    sha1_hash = hashlib.sha1()
+    with open(file_path, "rb") as f:
+        chunk = f.read(8192)
+        while chunk:
+            sha1_hash.update(chunk)
+            chunk = f.read(8192)
+    return sha1_hash.hexdigest()
 
-    return md5_digest
 
 def copy_tree(src, dst):
     """Recursively copy from src to dst, excluding .git folders."""
@@ -49,35 +58,50 @@ def copy_tree(src, dst):
 
 def push_folder_job(dir):
 
+    access_token = get_token()
+
+    server_url = get_server_url()
+
+    project_slug = get_project_slug()
+
+    term_cli_project_service = AcceleratorTerminalCliProjectService(
+        user_token=access_token,
+        server_url=server_url,
+        verify_cert=False
+    )
+
     repo_dir = tempfile.mkdtemp()
 
     copy_tree(dir, repo_dir)
+
+    temp_zip_path = f"{repo_dir}/temp.zip"
+
+    compress_folder(repo_dir, temp_zip_path)
     
-    branch_name = hash_folder(repo_dir)
+    sha256_hash = get_file_sha1(temp_zip_path)
+
+    final_zip_path = f"{repo_dir}/{sha256_hash}.zip"
+
     
-    repo = git.Repo.init(repo_dir)
+    os.rename(temp_zip_path, final_zip_path)
 
-    git_token = get_github_app_token()
+    presigned_push_url = term_cli_project_service.get_jobstore_push_url(
+        project_slug, f"{sha256_hash}.zip"
+    )
 
-    remote_url = f'https://x-access-token:{git_token}@{FOLDER_JOB_REPO_URL.split("https://")[1]}'
-    remote = repo.create_remote("accelerator_job_repo", remote_url)
 
-    remote.pull('master')
-
-    try:
-        repo.git.checkout(branch_name)
-    except git.exc.GitCommandError:
-        repo.git.checkout('-b', branch_name)
-
-    repo.git.add('.')
-
-    repo.index.commit(branch_name)
-
-    # TODO see what happens with the same checksum
-    remote.push(branch_name)
+    if presigned_push_url:
+        with  open(final_zip_path, 'rb') as f:
+            requests.put(
+                presigned_push_url,
+                data=f,
+                verify=False,
+            )
+    
+    
     shutil.rmtree(repo_dir)
 
-    return FOLDER_JOB_REPO_URL, branch_name
+    return f"s3accjobstore://{sha256_hash}.zip", sha256_hash
 
 
 class JobDispatchModel(BaseModel):

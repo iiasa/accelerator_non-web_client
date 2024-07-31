@@ -9,7 +9,7 @@ import importlib.util
 from rich import print
 from typing_extensions import Annotated
 
-from accli.token import save_token_details, get_token, get_server_url, set_github_app_token
+from accli.token import save_token_details, get_token, get_server_url, set_github_app_token, set_project_slug
 
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from ._version import VERSION
@@ -181,7 +181,7 @@ def dispatch(
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
     server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
 ):
-    
+    set_project_slug(project_slug)
     access_token = get_token()
 
     server_url = get_server_url()
