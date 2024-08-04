@@ -9,6 +9,8 @@ import urllib3
 from pathlib import Path
 from typing import List, Tuple
 
+from accli.common import todict
+
 class AccAPIError(Exception):
     pass
 
@@ -66,7 +68,7 @@ class AcceleratorJobProjectService:
             f"{self.cli_base_url}/file-stat/{bucket_object_id}",
             headers=self.common_request_headers
         )
-        return res.json()
+        return todict(res.data)
     
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
@@ -76,7 +78,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
         if res.data:
-            return res.json()
+            return todict(res.data)
     
     def get_dataset_type(self, *args, **kwargs):
         return self.get_bucket_object_validation_type(*args, **kwargs)
@@ -88,7 +90,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
         if res.data:
-            return res.json()
+            return todict(res.data)
 
     def get_bucket_object_validation_details(self, bucket_object_id):
         res = self.http_client_request(
@@ -97,7 +99,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
         if res.data:
-            return res.json()
+            return todict(res.data)
 
     
     def get_file_url(self, bucket_object_id):
@@ -108,7 +110,7 @@ class AcceleratorJobProjectService:
         )
 
         if res.data:
-            return res.json()
+            return todict(res.data)
 
 
     def get_file_stream(self, bucket_object_id):
@@ -123,7 +125,9 @@ class AcceleratorJobProjectService:
                 "GET",
                 f"{self.cli_base_url}/is-healthy/",
                 headers=self.common_request_headers
-            ).json()
+            )
+            if res.data:
+                res = todict(res.data)
         except Exception as err:
             raise UnhealthyControlServerError(str(err))
         
@@ -136,7 +140,9 @@ class AcceleratorJobProjectService:
                 "GET",
                 f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
                 headers=self.common_request_headers
-            ).json()
+            )
+            if res.data:
+                res = todict(res.data)
         except Exception as err:
             raise UnhealthyControlServerError(str(err))
 
@@ -189,7 +195,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     def get_multipart_put_update_signed_url(
         self,
@@ -208,7 +214,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     def get_put_create_multipart_upload_id(self, filename):
         res = self.http_client_request(
@@ -217,7 +223,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
 
-        data = res.json()
+        data = todict(res.data)
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
@@ -228,7 +234,7 @@ class AcceleratorJobProjectService:
             headers=self.common_request_headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     def complete_job_multipart_upload(
         self,
@@ -255,7 +261,7 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     def complete_update_multipart_upload(
         self, bucket_object_id, upload_id, parts: List[Tuple[str, str]]
@@ -365,7 +371,7 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
-        return res.json()
+        return todict(res.data)
 
       
 

@@ -7,7 +7,7 @@ import concurrent.futures
 from typing import List, Tuple
 from rich.progress import Progress
 
-
+from accli.common import todict
 
 class AccAPIError(Exception):
 
@@ -76,7 +76,7 @@ class AcceleratorTerminalCliProjectService:
             else:
                 raise err
 
-        return res.json()
+        return todict(res.data)
     
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
@@ -86,7 +86,7 @@ class AcceleratorTerminalCliProjectService:
             headers=self.common_request_headers
         )
         if res.data:
-            return res.json()
+            return todict(res.data)
     
     def get_github_app_token(self, project_slug):
         
@@ -96,7 +96,7 @@ class AcceleratorTerminalCliProjectService:
             headers=self.common_request_headers
         )
 
-        return res.json()
+        return todict(res.data)
     
     def get_jobstore_push_url(self, project_slug, filename):
         
@@ -109,7 +109,7 @@ class AcceleratorTerminalCliProjectService:
         if res.status == 409 or res.status == '409':
             return None
 
-        return res.json()
+        return todict(res.data)
     
     def dispatch(self, project_slug, job_description):
         
@@ -123,7 +123,7 @@ class AcceleratorTerminalCliProjectService:
         except AccAPIError as err:
                 raise err
 
-        return res.json()['job_id']
+        return todict(res.data)['job_id']
     
     def get_dataset_template_details(self, project_slug, template_slug):
         
@@ -138,7 +138,7 @@ class AcceleratorTerminalCliProjectService:
             else:
                 raise err
 
-        return res.json()
+        return todict(res.data)
 
     
     def get_multipart_put_create_signed_url(
@@ -161,7 +161,7 @@ class AcceleratorTerminalCliProjectService:
             headers=self.common_request_headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     
 
@@ -175,7 +175,7 @@ class AcceleratorTerminalCliProjectService:
             headers=self.common_request_headers
         )
 
-        data = res.json()
+        data = todict(res.data)
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
@@ -204,7 +204,7 @@ class AcceleratorTerminalCliProjectService:
             headers=headers
         )
 
-        return res.json()
+        return todict(res.data)
 
     
     def abort_create_multipart_upload(self, project_slug, app_bucket_id, filename, upload_id):

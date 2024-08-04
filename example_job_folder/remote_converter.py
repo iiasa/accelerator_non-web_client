@@ -11,6 +11,7 @@ from rio_cogeo.profiles import cog_profiles
 from accli import Fs
 
 
+print(os.environ)
 
 input_file = os.environ.get('INPUT_FILE')
 
