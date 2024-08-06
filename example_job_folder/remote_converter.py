@@ -1,6 +1,9 @@
 import os
 import fsspec
 import xarray as xr
+import aiohttp
+import asyncio
+import ssl
 
 import numpy
 import mercantile
@@ -10,6 +13,16 @@ from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from accli import Fs
 
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+
+async def get_client(**kwargs):
+    return aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(ssl=ssl_context),
+        **kwargs
+    )
 
 print(os.environ)
 
@@ -22,9 +35,9 @@ if not (input_file or validation_template_slug):
 
 file_url = Fs.get_file_url(input_file)
 
-of = fsspec.open(input_file)
 
-with of as f:
+fs = fsspec.filesystem('https', get_client=get_client)
+with fs.open(file_url) as f:
 
     dataset = xr.open_dataset(f)
     
