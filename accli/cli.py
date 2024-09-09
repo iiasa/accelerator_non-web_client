@@ -192,10 +192,6 @@ def dispatch(
         verify_cert=False
     )
 
-    github_app_token = term_cli_project_service.get_github_app_token(project_slug)
-    set_github_app_token(github_app_token)
-
-
     spec = importlib.util.spec_from_file_location("workflow", workflow_file)
 
     module = importlib.util.module_from_spec(spec)
