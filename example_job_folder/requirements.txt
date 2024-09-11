@@ -1,8 +1,11 @@
+--prefer-binary
+wget
 s3fs
 xarray
 h5netcdf
 rasterio
 rio-cogeo
 mercantile
+gdal==3.6.3
 
 git+https://github.com/iiasa/accli.git

@@ -1,4 +1,6 @@
 import os
+import requests
+import tempfile
 import fsspec
 import xarray as xr
 import aiohttp
@@ -13,16 +15,16 @@ from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from accli import Fs, AjobCliService
 
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
+# ssl_context = ssl.create_default_context()
+# ssl_context.check_hostname = False
+# ssl_context.verify_mode = ssl.CERT_NONE
 
 
-async def get_client(**kwargs):
-    return aiohttp.ClientSession(
-        connector=aiohttp.TCPConnector(ssl=ssl_context),
-        **kwargs
-    )
+# async def get_client(**kwargs):
+#     return aiohttp.ClientSession(
+#         connector=aiohttp.TCPConnector(ssl=ssl_context),
+#         **kwargs
+#     )
 
 print(os.environ)
 
@@ -52,15 +54,19 @@ root_schema_declarations = template_rules.get('root_schema_declarations')
 
 variable_dim_name = root_schema_declarations.get('variable_dim_name')
 
-fs = fsspec.filesystem('https', get_client=get_client)
-with fs.open(file_url) as f:
+# fs = fsspec.filesystem('https', get_client=get_client)
 
-    dataset = xr.open_dataset(f)
+response = requests.get(file_url)
+response.raise_for_status()
 
+with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+    temp_file.write(response.content)
+    temp_file_path = temp_file.name
+
+    dataset = xr.open_dataset(temp_file_path)
 
     # Check bounds
     time, x_dim, y_dim =  dataset.data_vars[variable_dim_name].dims
-
 
     required_bounds = root_schema_declarations.get('bounds')
 
@@ -71,7 +77,6 @@ with fs.open(file_url) as f:
         dataset[y_dim].max().values.item(),
         dataset.sizes[x_dim],
         dataset.sizes[y_dim],
-
     ]
 
     assert required_bounds == dataset_bounds, ValueError(
@@ -82,8 +87,8 @@ with fs.open(file_url) as f:
     # Extract COG GeoTIFF
     for band_number in range(1, len(dataset.data_vars[variable_dim_name][time]) + 1):
         
-        img_array = numpy.random.rand(nbands, height, width).astype(numpy.float32)
-        src_transform = from_bounds(*bounds, width=width, height=height)
+        src_transform = from_bounds(*dataset_bounds)
+        img_array = dataset.data_vars[variable_dim_name][time][band_number -1].values
     # End Extract COG GeoTIFF
 
     
