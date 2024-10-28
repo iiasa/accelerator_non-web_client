@@ -2,10 +2,14 @@
 wget
 s3fs
 xarray
+rioxarray
 h5netcdf
 rasterio
 rio-cogeo
 mercantile
 gdal==3.6.3
+cftime
+shapely
+geopandas
 
 git+https://github.com/iiasa/accli.git
