@@ -92,11 +92,12 @@ def push_folder_job(dir):
 
     if presigned_push_url:
         with  open(final_zip_path, 'rb') as f:
-            requests.put(
+            res = requests.put(
                 presigned_push_url,
                 data=f,
                 verify=False,
             )
+            res.raise_for_status()
     
     
     shutil.rmtree(repo_dir)
