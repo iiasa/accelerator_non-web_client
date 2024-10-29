@@ -1,7 +1,7 @@
 from accli import WKubeTask
 
 task = WKubeTask(
-    job_folder='./ca_job',
+    job_folder='./examples/ca_job_example',
     docker_filename='Dockerfile',
     command="python /app/job.py",
     required_cores=1,
