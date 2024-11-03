@@ -616,7 +616,7 @@ class Fs:
             if not source_path.exists():
                 raise ValueError("Source path does not exist")
 
-            with open(source, 'wb') as fstream:
+            with open(source, 'rb') as fstream:
                 if (user_token and server_url):
                     Fs.write_stream_remote(fstream, dest_filepath, user_token, server_url)
                 else:

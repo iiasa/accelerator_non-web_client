@@ -10,9 +10,9 @@ task = WKubeTask(
     required_storage_workflow=1024*1024,
     timeout=60*60,
     conf={
-        "INPUT_FILE": "brightspace/SpatialX/10gb.nc",
+        "INPUT_FILE": "bightspace/uploads/GLOBIOMAgmip_25102024.csv",
     }
 )
 
-
-# python -m accli dispatch brightspace example_job_folder/example_singleton_workflow.py task --server=http://web_be:8000
+# python -m accli login --webcli=https://localhost:8080 --server=http://web_be:8000
+# python -m accli dispatch bightspace examples/ca_job_example/workflow.py task --server=http://web_be:8000
