@@ -54,6 +54,18 @@ class AcceleratorJobProjectService:
 
     def http_client_request(self, *args, **kwargs):
         
+        if urllib3.__version__.startswith('1.'):
+            if 'json' in kwargs:
+                json_dict = kwargs.pop('json')
+
+                assert isinstance(json_dict, dict), (
+                    f"urllib request: json keyword argument should be dict."
+                )
+
+                encoded_data = json.dumps(json_dict).encode('utf-8')
+
+                kwargs['body'] = encoded_data
+        
         res = self.http_client.request(*args, **kwargs)
 
         if str(res.status)[0] in ['4', '5']:
