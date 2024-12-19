@@ -74,6 +74,9 @@ def push_folder_job(dir):
 
     copy_tree(dir, repo_dir)
 
+    if os.path.isfile(f'{repo_dir}/wkube.py'):
+        os.remove(f'{repo_dir}/wkube.py')
+
     temp_zip_path = f"{repo_dir}/temp.zip"
 
     compress_folder(repo_dir, temp_zip_path)
@@ -150,7 +153,7 @@ class WKubeTaskMeta(BaseModel):
 class WKubeTaskKwargs(BaseModel):
     docker_image: Optional[str]
 
-    job_folder: Optional[str]
+    job_folder: str = './'
     
     repo_url: Optional[str]                # required when docker image is not present
     repo_branch: Optional[str]             # required when docker image is not present
@@ -176,21 +179,21 @@ class WKubeTaskKwargs(BaseModel):
     def validate_root(cls, values):
         if not values.get('docker_image'):
 
-            job_folder = values.get('job_folder')
+            job_folder = values.get('job_folder', './')
 
-            if not job_folder: 
-            
+            if not (values.get('repo_url') and values.get('repo_branch')):
+                    remote_url, branch_name = push_folder_job(job_folder)
+                    values['repo_url'] = remote_url
+                    values['repo_branch'] = branch_name
+            else:
                 if not values.get('repo_url'): 
                     # TODO if has no repo url just set it
                     raise ValueError("repo_url is required")
                 
                 if not values.get('repo_branch'):
                     raise ValueError('repo_branch is required')
-            else: 
-                remote_url, branch_name = push_folder_job(job_folder)
-                values['repo_url'] = remote_url
-                values['repo_branch'] = branch_name
 
+            
             if not values.get('docker_filename'):
                 if not values.get("base_stack"):
                     raise ValueError("base_stack is required when dockerfile is not defined")

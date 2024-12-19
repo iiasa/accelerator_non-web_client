@@ -1,16 +1,16 @@
 from accli import WKubeTask
 
 task = WKubeTask(
-    job_folder='./examples/ca_job_example',
+    job_folder='./',
     docker_filename='Dockerfile',
     command="python /app/job.py",
     required_cores=1,
     required_ram=1024*1024*512,
-    required_storage_local=1024*1024,
+    required_storage_local=1024*1024*2,
     required_storage_workflow=1024*1024,
     timeout=60*60,
     conf={
-        "INPUT_FILE": "bightspace/uploads/GLOBIOMAgmip_25102024.csv",
+        "INPUT_FILE": "forest-navigator/TempDemo/SpatialData/ScenarioA/VariableX/2010.tif",
     }
 )
 

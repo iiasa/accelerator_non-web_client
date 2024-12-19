@@ -20,17 +20,25 @@ from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from accli import Fs, AjobCliService
 
-# import rpy2.robjects as robjects
-# from rpy2.robjects.packages import importr
-
-# Load the terra package
-# terra = importr('terra')
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
-file_url = 'https://localip:9000/accelerator/brightspace/SpatialX/FN.nc'
 
-#Look at the word lat, lon, latitude or longitude (case insensitive)
+input_file = os.environ.get('INPUT_FILE')
+
+user_token = os.environ.get("ACC_JOB_TOKEN", None)
+server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
+
+project_service = AjobCliService(
+    user_token,
+    server_url=server_url,
+    verify_cert=False
+)
+
+if not input_file:
+    raise ValueError('Env variable INPUT_FILE not set.')
+
+file_url = Fs.get_file_url(input_file)
 
 def get_crs(dataset, variable):
 
@@ -193,15 +201,15 @@ def calculate_band_number(indices, sizes):
     return band_number
 
 
-# with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-if True:
-    # temp_file_path = f"{temp_file.name}.nc"
-    temp_file_path = 'FN.nc'
+with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+# if True:
+    temp_file_path = f"{temp_file.name}.nc"
+    # temp_file_path = 'FN.nc'
 
     print(temp_file_path)
 
     print("Downloading..")
-    # wget.download(file_url, temp_file_path)
+    wget.download(file_url, temp_file_path)
     print("\nDownloaded")
 
     dataset = xr.open_dataset(
@@ -280,8 +288,6 @@ if True:
                 
 
                 bidx = calculate_band_number(band_indexes, band_index_dims_size) + 1
-                import pdb
-                pdb.set_trace()
 
                 crs = get_crs(dataset, variable)
             
@@ -293,11 +299,11 @@ if True:
                 if no_data_value == None:
                     raise ValueError("Cannot detect nodata value")
 
-                units = get_units(dataset, variable)
+                unit = get_units(dataset, variable)
 
                 print(crs)
                 print(no_data_value)
-                print(units)
+                print(unit)
 
 
                 bounds = get_bounds(dataset, variable)
@@ -321,7 +327,7 @@ if True:
                     nodata=no_data_value,
                     additional_cog_metadata=dict(
                         variable=variable,
-                        units=units
+                        unit=unit
                     )
                 )
 

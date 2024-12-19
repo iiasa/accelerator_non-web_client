@@ -176,9 +176,8 @@ def validate(
 @app.command()
 def dispatch(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-    # experiment_name: Annotated[str, typer.Argument(help="Experiment or simulation name. Please put name in quote it includes space(s).")],
-    workflow_file: Annotated[str, typer.Argument(help="Python workflow filepath.")],
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
+    base_dir: Annotated[str, typer.Option(help="Project root folder.")] = './',
     server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
 ):
     set_project_slug(project_slug)
@@ -192,7 +191,13 @@ def dispatch(
         verify_cert=False
     )
 
-    spec = importlib.util.spec_from_file_location("workflow", workflow_file)
+    workflow_filepath = 'wkube.py'
+    if base_dir.endswith('/'):
+        workflow_filepath = f"{base_dir}{workflow_filepath}"
+    else:
+        workflow_filepath = f"{base_dir}/{workflow_filepath}"
+
+    spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
 
     module = importlib.util.module_from_spec(spec)
 
