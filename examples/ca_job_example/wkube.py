@@ -1,6 +1,7 @@
 from accli import WKubeTask
 
 task = WKubeTask(
+    name="Experiment 1",
     job_folder='./',
     docker_filename='Dockerfile',
     command="python /app/job.py",
@@ -14,5 +15,5 @@ task = WKubeTask(
     }
 )
 
-# python -m accli login --webcli=https://localhost:8080 --server=http://web_be:8000
-# python -m accli dispatch bightspace examples/ca_job_example/workflow.py task --server=http://web_be:8000
+# python -m accli login --webcli=https://localhost:8080 -s=http://web_be:8000
+# python -m accli dispatch bightspace task -s=http://web_be:8000

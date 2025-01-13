@@ -47,8 +47,8 @@ def about():
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
-    webcli: Annotated[str, typer.Option(help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
+    server: Annotated[str, typer.Option(..., '-c',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
+    webcli: Annotated[str, typer.Option(..., '-s', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
         f"[bold cyan]Welcome to Accelerator Terminal Client.[/bold cyan]\n"
@@ -100,7 +100,7 @@ def upload(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator project space.")],
     folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
-    max_workers: Annotated[int, typer.Option(help="Maximum worker pool for multipart upload.")] = os.cpu_count()
+    max_workers: Annotated[int, typer.Option(..., '-w',help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
 
 
@@ -154,7 +154,7 @@ def validate(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
     filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
 ):
     
 
