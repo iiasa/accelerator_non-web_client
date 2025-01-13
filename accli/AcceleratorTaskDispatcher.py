@@ -8,7 +8,11 @@ import requests
 from typing import Optional, List, Dict
 from pydantic.v1 import BaseModel, root_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
-from accli.token import get_github_app_token, get_token, get_server_url, get_project_slug
+from accli.token import (
+    get_github_app_token, 
+    get_token, get_server_url, 
+    get_project_slug
+)
 
 FOLDER_JOB_REPO_URL = 'https://github.com/IIASA-Accelerator/wkube-job.git'
 
@@ -109,7 +113,9 @@ def push_folder_job(dir):
 
 
 class JobDispatchModel(BaseModel):
-    is_holder_job: bool = True  
+    is_holder_job: bool = True
+
+    name: str
     
     execute_cluster: str
     job_location: str

@@ -177,12 +177,11 @@ def validate(
 def dispatch(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-    base_dir: Annotated[str, typer.Option(help="Project root folder.")] = './',
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
     access_token = get_token()
-
     server_url = get_server_url()
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
@@ -191,11 +190,12 @@ def dispatch(
         verify_cert=False
     )
 
-    workflow_filepath = 'wkube.py'
+    base_dir = os.getcwd()
+    
     if base_dir.endswith('/'):
-        workflow_filepath = f"{base_dir}{workflow_filepath}"
+        workflow_filepath = f"{base_dir}{workflow_filename}"
     else:
-        workflow_filepath = f"{base_dir}/{workflow_filepath}"
+        workflow_filepath = f"{base_dir}/{workflow_filename}"
 
     spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
 
