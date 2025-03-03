@@ -649,3 +649,21 @@ class Fs:
                     Fs.write_stream_remote(fstream, dest_filepath, user_token, server_url)
                 else:
                     Fs.write_stream_local(fstream, dest_filepath)
+
+    @staticmethod
+    def enumerate_files_by_prefix(prefix):
+        user_token = os.environ.get("ACC_JOB_TOKEN", None)
+        server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
+
+        if not (user_token and server_url):
+            raise ValueError("Remote data repository credentials not found.")
+        
+        accelerator_job_service = AcceleratorJobProjectService(
+            user_token, 
+            server_url=server_url,
+            verify_cert=True
+        )
+
+        return accelerator_job_service.enumerate_files_by_prefix(
+            prefix
+        )
