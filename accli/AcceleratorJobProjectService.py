@@ -82,6 +82,22 @@ class AcceleratorJobProjectService:
         )
         return todict(res.data)
     
+    
+    def enumerate_files_by_prefix(self, prefix):
+        project_slug = filename.split('/')[0]
+
+
+        b64_encoded_prefix = base64.b64encode(prefix.encode()).decode()
+
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return todict(res.data)
+    
+    
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
         res = self.http_client_request(
