@@ -1,4 +1,4 @@
-# Accelerator terminal CLI and python API
+# Accelerator terminal client and Python API
 
 
 ## User Guide
