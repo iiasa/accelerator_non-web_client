@@ -1,5 +1,13 @@
 # Accelerator terminal client and Python API
 
+Provides a command-line client for interacting with the Accelerator as well as a Python API in the form of the `accli` package. These communicate with the rest API of the Accelerator [Control Services Backend](https://github.com/iiasa/control_services_backend).
+
+Uses device authentication:
+- Part 0Auth: [Device Authentication Flow](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow).
+- Auth valid for 7 days.
+- Grants are limited.
+- Access via RBAC:
+  * Stateless tokens.
 
 ## User Guide
 
