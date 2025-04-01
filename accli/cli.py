@@ -47,8 +47,8 @@ def about():
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
-    webcli: Annotated[str, typer.Option(help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
+    server: Annotated[str, typer.Option(..., '-c',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
+    webcli: Annotated[str, typer.Option(..., '-s', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
         f"[bold cyan]Welcome to Accelerator Terminal Client.[/bold cyan]\n"
@@ -100,7 +100,7 @@ def upload(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator project space.")],
     folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
-    max_workers: Annotated[int, typer.Option(help="Maximum worker pool for multipart upload.")] = os.cpu_count()
+    max_workers: Annotated[int, typer.Option(..., '-w',help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
 
 
@@ -154,7 +154,7 @@ def validate(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
     filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
 ):
     
 
@@ -176,14 +176,12 @@ def validate(
 @app.command()
 def dispatch(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-    # experiment_name: Annotated[str, typer.Argument(help="Experiment or simulation name. Please put name in quote it includes space(s).")],
-    workflow_file: Annotated[str, typer.Argument(help="Python workflow filepath.")],
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-    server: Annotated[str, typer.Option(help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
     access_token = get_token()
-
     server_url = get_server_url()
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
@@ -192,7 +190,14 @@ def dispatch(
         verify_cert=False
     )
 
-    spec = importlib.util.spec_from_file_location("workflow", workflow_file)
+    base_dir = os.getcwd()
+    
+    if base_dir.endswith('/'):
+        workflow_filepath = f"{base_dir}{workflow_filename}"
+    else:
+        workflow_filepath = f"{base_dir}/{workflow_filename}"
+
+    spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
 
     module = importlib.util.module_from_spec(spec)
 
