@@ -11,7 +11,8 @@ task = WKubeTask(
     required_storage_workflow=1024*1024,
     timeout=60*60,
     conf={
-        "INPUT_FILE": "forest-navigator/TempDemo/SpatialData/ScenarioA/VariableX/2010.tif",
+        "input_mapping": "acc://forest-navigator/xyz:/app/xyz",
+        "output_mapping": "/app/output/:acc://out"
     }
 )
 
