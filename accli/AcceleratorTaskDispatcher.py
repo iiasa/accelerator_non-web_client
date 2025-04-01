@@ -235,13 +235,14 @@ class WKubeTask(GenericTask):
         wkube_task_meta = dict()
 
         if (t_args or t_kwargs):
-            
+            name = t_kwargs.pop('name')        
             WKubeTaskPydantic(*t_args, **t_kwargs)
             wkube_task_kwargs = WKubeTaskKwargs(*t_args, **t_kwargs)
             wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).dict(exclude_unset=True))
             
 
         self.dispatch_model_task = JobDispatchModel(
+            name=name,
             is_holder_job=not (t_args or t_kwargs),
             execute_cluster='WKUBE',
             job_location='acc_native_jobs.dispatch_wkube_task',
