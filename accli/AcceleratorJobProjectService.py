@@ -6,6 +6,7 @@ import requests
 import json
 import base64
 import urllib3
+from urllib.parse import quote
 from pathlib import Path
 from typing import List, Tuple
 
@@ -245,9 +246,10 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def get_put_create_multipart_upload_id(self, filename):
+        encoded_filename = quote(filename)
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/create-multipart-upload-id/{filename}",
+            f"{self.cli_base_url}/multipart-upload-id/?filename={encoded_filename}",
             headers=self.common_request_headers
         )
 
