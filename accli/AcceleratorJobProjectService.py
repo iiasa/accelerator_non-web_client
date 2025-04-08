@@ -368,7 +368,8 @@ class AcceleratorJobProjectService:
         self, 
         validated_bucket_object_id: int,
         dataset_template_id: int,
-        validated_metadata: dict
+        validated_metadata: dict,
+        validation_supporting_bucket_object_ids: List[int]
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -380,7 +381,8 @@ class AcceleratorJobProjectService:
             json=dict(
                 validated_bucket_object_id=validated_bucket_object_id,
                 dataset_template_id=dataset_template_id,
-                validated_metadata=validated_metadata
+                validated_metadata=validated_metadata,
+                validation_supporting_bucket_object_ids=validation_supporting_bucket_object_ids
             ),
             headers=headers
         )
