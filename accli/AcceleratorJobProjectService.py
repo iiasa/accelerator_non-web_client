@@ -257,6 +257,19 @@ class AcceleratorJobProjectService:
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
+
+    def get_validator_create_multipart_upload_id(self, filename):
+        encoded_filename = quote(filename)
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/validator-multipart-upload-id/?filename={encoded_filename}",
+            headers=self.common_request_headers
+        )
+
+        data = todict(res.data)
+
+        return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
+
     def get_put_update_multipart_upload_id(self, bucket_object_id):
         res = self.http_client_request(
             "GET", 
@@ -570,6 +583,84 @@ class AcceleratorJobProjectService:
                     upload_id,
                 )
 
+            raise err
+
+
+    def add_filestream_as_validation_supporter(self, filename, file_stream, is_log_file=False):
+        headers = dict()
+        headers["Content-Type"] = "application/octet-stream"
+
+        part_size, part_count = 50 * 1024**2, -1
+
+        upload_id = None
+        app_bucket_id = None
+        uniqified_filename = None
+
+        one_byte = b""
+        stop = False
+        part_number = 0
+        parts = []
+        uploaded_size = 0
+        put_presigned_url = None
+
+        try:
+            while not stop:
+                part_number += 1
+                part_data = self.read_part_data(
+                    file_stream,
+                    part_size + 1,
+                    one_byte,
+                    progress=None,
+                )
+
+                # If part_data_size is less or equal to part_size,
+                # then we have reached last part.
+                if len(part_data) <= part_size:
+                    part_count = part_number
+                    stop = True
+                else:
+                    one_byte = part_data[-1:]
+                    part_data = part_data[:-1]
+
+                uploaded_size += len(part_data)
+
+                if not upload_id:
+                    (
+                        upload_id,
+                        app_bucket_id,
+                        uniqified_filename,
+                    ) = self.get_put_create_multipart_upload_id(
+                        filename, 
+                        # headers=headers
+                    )
+
+                put_presigned_url = self.get_validator_create_multipart_upload_id(
+                    app_bucket_id, uniqified_filename, upload_id, part_number
+                )
+
+                part_upload_response = requests.put(
+                    put_presigned_url,
+                    data=part_data,
+                    # headers=headers,
+                    verify=False,
+                )
+
+                etag = part_upload_response.headers.get("etag").replace('"', "")
+                parts.append((part_number, etag))
+
+            created_bucket_object_id = self.complete_job_multipart_upload(
+                app_bucket_id, uniqified_filename, upload_id, parts, is_log_file=is_log_file
+            )
+            return created_bucket_object_id
+
+        except Exception as err:
+            # Cancel if any error
+            if upload_id:
+                self.abort_create_multipart_upload(
+                    app_bucket_id,
+                    uniqified_filename,
+                    upload_id,
+                )
             raise err
 
     def update_job_status(self, status):
