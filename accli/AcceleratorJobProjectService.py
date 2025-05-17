@@ -228,7 +228,7 @@ class AcceleratorJobProjectService:
 
     def get_multipart_put_update_signed_url(
         self,
-        bucket_object_id,
+        filename,
         upload_id,
         part_number,
     ):
@@ -236,7 +236,7 @@ class AcceleratorJobProjectService:
             "GET", 
             f"{self.cli_base_url}/put-update-signed-url",
             fields=dict(
-                bucket_object_id=bucket_object_id,
+                filename=filename,
                 upload_id=upload_id,
                 part_number=part_number
             ),
@@ -270,10 +270,11 @@ class AcceleratorJobProjectService:
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
-    def get_put_update_multipart_upload_id(self, bucket_object_id):
+    def get_put_update_multipart_upload_id(self, filename):
+        encoded_filename = quote(filename)
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/update-multipart-upload-id/{bucket_object_id}",
+            f"{self.cli_base_url}/update-multipart-upload-id/?filename={encoded_filename}",
             headers=self.common_request_headers
         )
 
@@ -512,7 +513,7 @@ class AcceleratorJobProjectService:
                 )
             raise err
 
-    def replace_bucket_object_id_content(self, bucket_object_id, file_stream):
+    def replace_bucket_object_id_content(self, filename, file_stream):
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
@@ -552,12 +553,11 @@ class AcceleratorJobProjectService:
 
                 if not upload_id:
                     upload_id = self.get_put_update_multipart_upload_id(
-                        bucket_object_id, 
-                        # headers=headers
+                        filename
                     )
 
                 put_presigned_url = self.get_multipart_put_update_signed_url(
-                    bucket_object_id, upload_id, part_number
+                    filename, upload_id, part_number
                 )
 
                 part_upload_response = requests.put(
