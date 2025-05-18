@@ -308,7 +308,7 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def complete_update_multipart_upload(
-        self, bucket_object_id, upload_id, parts: List[Tuple[str, str]]
+        self, filename, upload_id, parts: List[Tuple[str, str]]
     ):
 
         headers = {"Content-Type": "application/json"}
@@ -319,7 +319,7 @@ class AcceleratorJobProjectService:
             "PUT", 
             f"{self.cli_base_url}/complete-update-multipart-upload",
             json=dict(
-                bucket_object_id=bucket_object_id,
+                filename=filename,
                 upload_id=upload_id,
                 parts=base64.b64encode(json.dumps(parts).encode()).decode()
             ),
@@ -343,7 +343,7 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
-    def abort_update_multipart_upload(self, bucket_object_id, upload_id):
+    def abort_update_multipart_upload(self, filename, upload_id):
         
         headers = {
             # "Content-Type": "application/json"
@@ -355,7 +355,7 @@ class AcceleratorJobProjectService:
             "PUT", 
             f"{self.cli_base_url}/abort-update-multipart-upload",
             json=dict(
-                bucket_object_id=bucket_object_id,
+                filename=filename,
                 upload_id=upload_id
             ),
             headers=headers
@@ -571,7 +571,7 @@ class AcceleratorJobProjectService:
                 parts.append((part_number, etag))
 
             result = self.complete_update_multipart_upload(
-                bucket_object_id,
+                filename,
                 upload_id,
                 parts,
             )
@@ -579,7 +579,7 @@ class AcceleratorJobProjectService:
             # Cancel if any error
             if upload_id:
                 self.abort_update_multipart_upload(
-                    bucket_object_id,
+                    filename,
                     upload_id,
                 )
 
