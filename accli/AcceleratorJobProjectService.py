@@ -326,6 +326,8 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
+        return todict(res.data)
+
     def abort_create_multipart_upload(self, app_bucket_id, filename, upload_id):
         
         headers = {"Content-Type": "application/json"}
