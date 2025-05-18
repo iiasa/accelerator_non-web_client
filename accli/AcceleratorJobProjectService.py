@@ -570,11 +570,13 @@ class AcceleratorJobProjectService:
                 etag = part_upload_response.headers.get("etag").replace('"', "")
                 parts.append((part_number, etag))
 
-            result = self.complete_update_multipart_upload(
+            created_bucket_object_id = self.complete_update_multipart_upload(
                 filename,
                 upload_id,
                 parts,
             )
+
+            return created_bucket_object_id
         except Exception as err:
             # Cancel if any error
             if upload_id:
