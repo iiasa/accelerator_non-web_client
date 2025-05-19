@@ -307,6 +307,32 @@ class AcceleratorJobProjectService:
 
         return todict(res.data)
 
+
+    def complete_validator_multipart_upload(
+        self,
+        app_bucket_id,
+        filename,
+        upload_id,
+        parts: List[Tuple[str, str]]
+    ):
+        headers = {"Content-Type": "application/json"}
+
+        headers.update(self.common_request_headers)
+
+        res = self.http_client_request(
+            "PUT", 
+            f"{self.cli_base_url}/complete-validator-multipart-upload",
+            json=dict(
+                app_bucket_id=app_bucket_id,
+                filename=filename,
+                upload_id=upload_id,
+                parts=base64.b64encode(json.dumps(parts).encode()).decode()
+            ),
+            headers=headers
+        )
+
+        return todict(res.data)
+
     def complete_update_multipart_upload(
         self, filename, upload_id, parts: List[Tuple[str, str]]
     ):
@@ -652,8 +678,8 @@ class AcceleratorJobProjectService:
                 etag = part_upload_response.headers.get("etag").replace('"', "")
                 parts.append((part_number, etag))
 
-            created_bucket_object_id = self.complete_job_multipart_upload(
-                app_bucket_id, uniqified_filename, upload_id, parts, is_log_file=is_log_file
+            created_bucket_object_id = self.complete_validator_multipart_upload(
+                app_bucket_id, uniqified_filename, upload_id, parts
             )
             return created_bucket_object_id
 
