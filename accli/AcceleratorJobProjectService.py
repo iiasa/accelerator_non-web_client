@@ -121,6 +121,25 @@ class AcceleratorJobProjectService:
         if res.data:
             return todict(res.data)
 
+
+    def get_filename_dataset_type(self, filename):
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/filename-dataset-type/?filename={filename}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return todict(res.data)
+
+    def get_filename_validation_details(self, filename):
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/filename-validation-detail/?filename={filename}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return todict(res.data)
+
     def get_bucket_object_validation_details(self, bucket_object_id):
         res = self.http_client_request(
             "GET", 
