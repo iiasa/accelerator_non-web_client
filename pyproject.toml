@@ -11,15 +11,15 @@ authors = [
 description = "IIASA Accelerator Client"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.7.17"
+requires-python = ">=3.7"
 dependencies = [
-    "urllib3~=2.0.7",
-    "typer[all]~=0.16.0",
-    "tinydb~=4.8.0",
-    "requests~=2.31.0",
-    "jsonschema~=4.17.3",
-    "pydantic~=2.5.3",
-    "gitpython~=3.1.43"
+    "urllib3>=1.26.5",        # 2.0.7 is recent, but 1.26.5+ is widely compatible
+    "typer[all]>=0.4.0",      # 0.4.0+ is stable and has most features
+    "tinydb>=4.5.2",          # 4.5.2 is a solid release, avoid tight pin
+    "requests>=2.25.1",       # Commonly supported baseline
+    "jsonschema>=4.5.1",      # 4.5.1+ is safe across libraries
+    "pydantic>=2.0",          # Major version 2 required if you're using v2 features
+    "gitpython>=3.1.30"       # Minimum stable with good Python 3.7+ support
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

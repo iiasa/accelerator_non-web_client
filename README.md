@@ -56,3 +56,6 @@ Please follow [this link.](https://packaging.python.org/en/latest/tutorials/pack
 2. Run 'python scripts/tag.py'
 3. `python -m build`
 4. `twine upload -r pypi -u __token__ -p <password-or-token> ./dist/*`
+
+
+#TODO nuitka --standalone --onefile --static-libpython=yes --include-package=accli --output-dir=build -m accli.cli:app
