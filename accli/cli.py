@@ -47,8 +47,8 @@ def about():
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(..., '-c',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
-    webcli: Annotated[str, typer.Option(..., '-s', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
+    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
+    webcli: Annotated[str, typer.Option(..., '-c', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
         f"[bold cyan]Welcome to Accelerator Terminal Client.[/bold cyan]\n"

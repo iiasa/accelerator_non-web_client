@@ -12,9 +12,9 @@ task = WKubeTask(
     timeout=60*60,
     conf={
         "input_mapping": "acc://forest-navigator/xyz:/app/xyz",
-        "output_mapping": "/app/output/:acc://out"
+        "output_mapping": "/app/output/output_w_bi.csv:acc://outputs"
     }
 )
 
-# python -m accli login --webcli=https://localhost:8080 -s=http://web_be:8000
+# python -m accli login -c https://localhost:8080 -s http://web_be:8000
 # python -m accli dispatch bightspace task -s=http://web_be:8000
