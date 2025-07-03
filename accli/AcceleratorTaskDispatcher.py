@@ -143,6 +143,21 @@ class JobDispatchModel(BaseModel):
     children: List['JobDispatchModel'] = []
     callback: Optional['JobDispatchModel']
 
+    def dict(self, *args, **kwargs):
+        result = super().dict(*args, **kwargs)
+        if result['is_holder_job'] and result['execute_cluster'] == 'WKUBE':
+            if len(result['children']) > 1:
+                if not result['children'][0]['job_kwargs'].get('docker_image'):
+                    builder_task = result['children'][0].copy()
+                    
+                    builder_task['build_only_task'] = True
+
+                    builder_task['callback'] = result.copy()
+                    builder_task['name'] = f"{builder_task['callback']['name']} -- Image Builder"
+                    builder_task['callback']['name'] = f"{builder_task['callback']['name']} -- Holder"
+                    return builder_task
+        return result
+
 
 class WKubeTaskMeta(BaseModel):
     required_cores: float
@@ -234,8 +249,9 @@ class WKubeTask(GenericTask):
         wkube_task_kwargs = None
         wkube_task_meta = dict()
 
-        if (t_args or t_kwargs):
-            name = t_kwargs.pop('name')        
+        
+        name = t_kwargs.pop('name') if 'name' in t_kwargs else None 
+        if (t_args or t_kwargs):        
             WKubeTaskPydantic(*t_args, **t_kwargs)
             wkube_task_kwargs = WKubeTaskKwargs(*t_args, **t_kwargs)
             wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).dict(exclude_unset=True))
