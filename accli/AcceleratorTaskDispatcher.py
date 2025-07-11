@@ -114,6 +114,7 @@ def push_folder_job(dir):
 
 class JobDispatchModel(BaseModel):
     is_holder_job: bool = True
+    build_only_task: bool = False
 
     name: str
     

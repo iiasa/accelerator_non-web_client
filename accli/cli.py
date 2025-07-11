@@ -212,12 +212,12 @@ def dispatch(
     print(job_to_dispatch.description)
 
 
-    # root_job_id = term_cli_project_service.dispatch(
-    #     project_slug,
-    #     job_to_dispatch.description
-    # )
+    root_job_id = term_cli_project_service.dispatch(
+        project_slug,
+        job_to_dispatch.description
+    )
 
-    # print(f"Dispatched root job #ID: {root_job_id}")
+    print(f"Dispatched root job #ID: {root_job_id}")
 
 
 
