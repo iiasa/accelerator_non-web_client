@@ -5,6 +5,7 @@ import hashlib
 import shutil
 import tempfile
 import requests
+from functools import lru_cache
 from typing import Optional, List, Dict
 from pydantic.v1 import BaseModel, root_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
@@ -60,6 +61,7 @@ def copy_tree(src, dst):
         else:
             shutil.copy2(src_path, dst_path)
 
+@lru_cache(maxsize=None)
 def push_folder_job(dir):
 
     access_token = get_token()
@@ -204,7 +206,9 @@ class WKubeTaskKwargs(BaseModel):
             job_folder = values.get('job_folder', './')
 
             if not (values.get('repo_url') and values.get('repo_branch')):
-                    remote_url, branch_name = push_folder_job(job_folder)
+                    remote_url, branch_name = push_folder_job(
+                        os.path.abspath(job_folder)
+                    )
                     values['repo_url'] = remote_url
                     values['repo_branch'] = branch_name
             else:
