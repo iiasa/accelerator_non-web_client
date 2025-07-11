@@ -112,15 +112,20 @@ class AcceleratorTerminalCliProjectService:
         return todict(res.data)
     
     def get_jobstore_push_url(self, project_slug, filename):
+        try:
         
-        res = self.http_client_request(
-            "GET", 
-            f"{self.cli_base_url}/{project_slug}/jobstore-push-url/?filename={filename}",
-            headers=self.common_request_headers
-        )
+            res = self.http_client_request(
+                "GET", 
+                f"{self.cli_base_url}/{project_slug}/jobstore-push-url/?filename={filename}",
+                headers=self.common_request_headers
+            )
 
-        if res.status == 409 or res.status == '409':
-            return None
+        except AccAPIError as err:
+            if err.status_code == 409 or err.status_code == '409':
+                return None
+            else:
+                raise err
+
 
         return todict(res.data)
     
