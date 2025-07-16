@@ -26,6 +26,8 @@ from accli import Fs, AjobCliService
 #         **kwargs
 #     )
 
+
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
 print(os.environ)
 
 input_file = os.environ.get('INPUT_FILE')
@@ -38,7 +40,7 @@ server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 project_service = AjobCliService(
     user_token,
     server_url=server_url,
-    verify_cert=False
+    verify_cert=(not ACCLI_DEBUG)
 )
 
 if not (input_file or validation_template_slug):

@@ -23,6 +23,7 @@ from accli import Fs, AjobCliService
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
 
 input_file = os.environ.get('INPUT_FILE')
 

@@ -15,6 +15,8 @@ from accli.token import (
     get_project_slug
 )
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
 FOLDER_JOB_REPO_URL = 'https://github.com/IIASA-Accelerator/wkube-job.git'
 
 
@@ -73,7 +75,7 @@ def push_folder_job(dir):
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
         server_url=server_url,
-        verify_cert=False
+        verify_cert=(not ACCLI_DEBUG)
     )
 
     repo_dir = tempfile.mkdtemp()

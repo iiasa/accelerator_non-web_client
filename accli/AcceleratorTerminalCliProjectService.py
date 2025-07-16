@@ -9,6 +9,8 @@ from rich.progress import Progress
 
 from accli.common import todict
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
 class AccAPIError(Exception):
 
     def __init__(self, message, response, status_code):            
@@ -33,7 +35,7 @@ class AcceleratorTerminalCliProjectService:
             self,
             user_token, 
             server_url,
-            verify_cert=True
+            verify_cert=(not ACCLI_DEBUG)
         ):
         
         self.user_token = user_token

@@ -20,6 +20,9 @@ from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from accli import Fs, AjobCliService
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
+
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -32,7 +35,7 @@ server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 project_service = AjobCliService(
     user_token,
     server_url=server_url,
-    verify_cert=False
+    verify_cert=(not ACCLI_DEBUG)
 )
 
 if not input_file:

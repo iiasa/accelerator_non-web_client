@@ -12,6 +12,8 @@ from typing import List, Tuple
 
 from accli.common import todict
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
 class AccAPIError(Exception):
     pass
 
@@ -38,7 +40,7 @@ class AcceleratorJobProjectService:
             self,
             user_token, 
             server_url='http://accelerator-api.iiasa.ac.at',
-            verify_cert=True
+            verify_cert=(not ACCLI_DEBUG)
         ):
         
         self.user_token = user_token
@@ -739,7 +741,7 @@ class Fs:
         accelerator_job_service = AcceleratorJobProjectService(
             user_token, 
             server_url=server_url,
-            verify_cert=True
+            verify_cert=(not ACCLI_DEBUG)
         )
 
         accelerator_job_service.add_filestream_as_job_output(
@@ -763,7 +765,7 @@ class Fs:
         accelerator_job_service = AcceleratorJobProjectService(
             user_token, 
             server_url=server_url,
-            verify_cert=True
+            verify_cert=(not ACCLI_DEBUG)
         )
 
         return accelerator_job_service.get_file_url_from_repo(
@@ -805,7 +807,7 @@ class Fs:
         accelerator_job_service = AcceleratorJobProjectService(
             user_token, 
             server_url=server_url,
-            verify_cert=True
+            verify_cert=(not ACCLI_DEBUG)
         )
 
         return accelerator_job_service.enumerate_files_by_prefix(

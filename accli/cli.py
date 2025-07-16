@@ -20,6 +20,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, B
 
 warnings.filterwarnings('ignore')
 
+ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
 app = typer.Typer(
     add_completion=False, 
     pretty_exceptions_show_locals=False, 
@@ -61,7 +63,8 @@ def login(
 
     token_response = requests.post(
         f"{server}/v1/oauth/device/token/", 
-        json={"device_authorization_code": device_authorization_code}
+        json={"device_authorization_code": device_authorization_code},
+        verify=(not ACCLI_DEBUG)
     )
 
     print("")
@@ -83,7 +86,7 @@ def upload_file(project_slug, accelerator_filename, local_filepath, progress, ta
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
         server_url=server_url,
-        verify_cert=False
+        verify_cert=(not ACCLI_DEBUG)
     )
 
     stat = term_cli_project_service.get_file_stat(project_slug, f"{folder_name}/{accelerator_filename}")
@@ -161,7 +164,7 @@ def validate(
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token="",
         server_url=server,
-        verify_cert=False
+        verify_cert=(not ACCLI_DEBUG)
     )
 
     validate = CsvRegionalTimeseriesValidator(
@@ -187,7 +190,7 @@ def dispatch(
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
         server_url=server_url,
-        verify_cert=False
+        verify_cert=(not ACCLI_DEBUG)
     )
 
     base_dir = os.getcwd()
