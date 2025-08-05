@@ -170,14 +170,45 @@ class AcceleratorJobProjectService:
             return resp
 
     def check_job_health(self):
+
+        import base64
+        import json
+
+        def decode_jwt_payload(jwt_token):
+            try:
+                # JWT structure: header.payload.signature
+                payload_part = jwt_token.split('.')[1]
+                # Add padding if necessary
+                padding = '=' * (-len(payload_part) % 4)
+                decoded_bytes = base64.urlsafe_b64decode(payload_part + padding)
+                payload = json.loads(decoded_bytes)
+                return payload
+            except Exception as e:
+                return {"error": f"Failed to decode JWT: {str(e)}"}
+
         try:
             res = self.http_client_request(
                 "GET",
                 f"{self.cli_base_url}/is-healthy/",
                 headers=self.common_request_headers
             )
+
+                # Prepare log file path
+            log_path = "/tmp/job_health_log.txt"
+
+            # Write logs to file with timestamp
+            with open(log_path, "a") as f:
+                f.write(f"\n--- Log Entry: {datetime.now().isoformat()} ---\n")
+                f.write("JWT Payload:\n")
+                f.write(json.dumps(jwt_payload, indent=2) + "\n\n")
+                f.write("Response Data:\n")
+                f.write(str(res.data) + "\n")
+                f.write("--- End of Entry ---\n")
+
+       
             if res.data:
                 res = todict(res.data)
+
         except Exception as err:
             raise UnhealthyControlServerError(str(err))
         

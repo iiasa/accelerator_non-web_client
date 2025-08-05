@@ -1,61 +1,113 @@
-# Accelerator terminal client and Python API
 
-Provides a command-line client for interacting with the Accelerator as well as a Python API in the form of the `accli` package. These communicate with the rest API of the Accelerator [Control Services Backend](https://github.com/iiasa/control_services_backend).
+# Accelerator Terminal Client and Python API
 
-Uses device authentication:
-- Part 0Auth: [Device Authentication Flow](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow).
-- Auth valid for 7 days.
-- Grants are limited.
-- Access via RBAC:
-  * Stateless tokens.
+This package provides:
 
-## User Guide
+- A **command-line client** (`accli`) for interacting with the **Accelerator**.
+- A **Python API** via the `accli` package.
 
-**Requirements**
-* Python >=3.7.17
+Both interfaces communicate with the Accelerator’s REST API, implemented in the [Control Services Backend](https://github.com/iiasa/control_services_backend).
 
-**Installation**
+---
 
-`pip install accli --user`
+## 🔐 Authentication
 
-**Usage as module**
+This client uses **device authentication** via Auth0.
 
-`python -m accli`
+- **OAuth Flow**: [Device Authorization Flow](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow)  
+- **Token Validity**: 7 days  
+- **Access Control**: Role-Based Access Control (RBAC) with stateless tokens  
+- **Grants**: Limited and scoped  
 
-**Usage as executable**
+---
 
-*You might receive following similar warning during installation*
+## 📖 User Guide
+
+### ✅ Requirements
+
+- Python >= 3.7.17
+
+### 📦 Installation
+
+```bash
+pip install accli --user
 ```
- WARNING: The script accli.exe is installed in 'C:\Users\singhr\AppData\Roaming\Python\Python311\Scripts' which is not on PATH.
-  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+### ▶️ Usage
+
+#### As a Python Module
+
+```bash
+python -m accli
 ```
 
-*You could also add executable directory path in PATH environment variable. Please follow following links for instruction on adding executable directory path to PATH environemnt variable.*
+#### As an Executable
 
-[Updating PATH on windows](https://stackoverflow.com/questions/44272416/how-to-add-a-folder-to-path-environment-variable-in-windows-10-with-screensho)
+After installation, the executable might not be in your system `PATH`. You may see a warning like this:
 
-[Updating PATH on linux](https://www.geeksforgeeks.org/how-to-set-path-permanantly-in-linux/)
+```
+WARNING: The script accli.exe is installed in 'C:\Users\<user>\AppData\Roaming\Python\Python311\Scripts' which is not on PATH.
+Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+```
 
-**Command**
+To resolve this, add the script's path to your system's environment variables:
 
-`accli --help`
+- [Update PATH on Windows](https://stackoverflow.com/questions/44272416/how-to-add-a-folder-to-path-environment-variable-in-windows-10-with-screensho)
+- [Update PATH on Linux](https://www.geeksforgeeks.org/how-to-set-path-permanantly-in-linux/)
 
-*Output*
+> **Note:** On Linux/macOS, you may need to prefix the command with `./`, and on Windows, with `.\`.
 
-`Usage: accli [OPTIONS] COMMAND [ARGS]...`
+### 🔍 Help Command
 
-*Note: You may need to prepend the command with either `./`(in linux) or `.\`(in winodws).*
+```bash
+accli --help
+```
 
+**Sample Output:**
 
-## Developer Guide
-**General build and upload instructions**
-Please follow [this link.](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+```
+Usage: accli [OPTIONS] COMMAND [ARGS]...
+```
 
-**Release process**
-1. Commit with right version on accli/_version.py
-2. Run 'python scripts/tag.py'
-3. `python -m build`
-4. `twine upload -r pypi -u __token__ -p <password-or-token> ./dist/*`
+---
 
+## 👩‍💻 Developer Guide
 
-#TODO nuitka --standalone --onefile --static-libpython=yes --include-package=accli --output-dir=build -m accli.cli:app
+### 🛠 Build & Upload
+
+Follow the official Python packaging tutorial:  
+[Packaging Projects – Python.org](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+
+### 🚀 Release Process
+
+1. Update the version in `accli/_version.py`
+2. Tag the release:
+
+    ```bash
+    python scripts/tag.py
+    ```
+
+3. Build the package:
+
+    ```bash
+    python -m build
+    ```
+
+4. Upload to PyPI:
+
+    ```bash
+    twine upload -r pypi -u __token__ -p <password-or-token> ./dist/*
+    ```
+
+---
+
+## 🧪 Experimental
+
+Consider bundling with Nuitka:
+
+```bash
+nuitka --standalone --onefile --static-libpython=yes \
+       --include-package=accli \
+       --output-dir=build \
+       -m accli.cli:app
+```
