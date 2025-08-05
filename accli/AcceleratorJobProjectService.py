@@ -173,6 +173,7 @@ class AcceleratorJobProjectService:
 
         import base64
         import json
+        from datetime import datetime
 
         def decode_jwt_payload(jwt_token):
             try:
@@ -195,6 +196,8 @@ class AcceleratorJobProjectService:
 
                 # Prepare log file path
             log_path = "/tmp/job_health_log.txt"
+
+            jwt_payload = decode_jwt_payload(self.common_request_headers.get('x-authorization'))
 
             # Write logs to file with timestamp
             with open(log_path, "a") as f:
