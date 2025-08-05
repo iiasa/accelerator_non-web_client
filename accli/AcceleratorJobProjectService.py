@@ -22,8 +22,6 @@ class AccAPIError(Exception):
     #     self.response_data = kwargs.pop('response_data')
     #     super().__init__(*args, **kwargs)
 
-class UnhealthyControlServerError(Exception):
-    pass
 
 retries = urllib3.util.Retry(total=10, backoff_factor=1)
 
@@ -187,33 +185,32 @@ class AcceleratorJobProjectService:
             except Exception as e:
                 return {"error": f"Failed to decode JWT: {str(e)}"}
 
-        try:
-            res = self.http_client_request(
-                "GET",
-                f"{self.cli_base_url}/is-healthy/",
-                headers=self.common_request_headers
-            )
+        
+        res = self.http_client_request(
+            "GET",
+            f"{self.cli_base_url}/is-healthy/",
+            headers=self.common_request_headers
+        )
 
-                # Prepare log file path
-            log_path = "/tmp/job_health_log.txt"
+            # Prepare log file path
+        log_path = "/tmp/job_health_log.txt"
 
-            jwt_payload = decode_jwt_payload(self.common_request_headers.get('x-authorization'))
+        jwt_payload = decode_jwt_payload(self.common_request_headers.get('x-authorization'))
 
-            # Write logs to file with timestamp
-            with open(log_path, "a") as f:
-                f.write(f"\n--- Log Entry: {datetime.now().isoformat()} ---\n")
-                f.write("JWT Payload:\n")
-                f.write(json.dumps(jwt_payload, indent=2) + "\n\n")
-                f.write("Response Data:\n")
-                f.write(str(res.data) + "\n")
-                f.write("--- End of Entry ---\n")
+        # Write logs to file with timestamp
+        with open(log_path, "a") as f:
+            f.write(f"\n--- Log Entry: {datetime.now().isoformat()} ---\n")
+            f.write("JWT Payload:\n")
+            f.write(json.dumps(jwt_payload, indent=2) + "\n\n")
+            f.write("Response Data:\n")
+            f.write(str(res.data) + "\n")
+            f.write("--- End of Entry ---\n")
 
-       
-            if res.data:
-                res = todict(res.data)
+    
+        if res.data:
+            res = todict(res.data)
 
-        except Exception as err:
-            raise UnhealthyControlServerError(str(err))
+        
         
         is_healthy = res['is_healthy']
         return is_healthy
@@ -236,33 +233,31 @@ class AcceleratorJobProjectService:
             except Exception as e:
                 return {"error": f"Failed to decode JWT: {str(e)}"}
 
-        try:
-            res = self.http_client_request(
-                "GET",
-                f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
-                headers=self.common_request_headers
-            )
+        
+        res = self.http_client_request(
+            "GET",
+            f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
+            headers=self.common_request_headers
+        )
 
-                # Prepare log file path
-            log_path = "/tmp/job_health_log.txt"
+            # Prepare log file path
+        log_path = "/tmp/job_health_log.txt"
 
-            jwt_payload = decode_jwt_payload(self.common_request_headers.get('x-authorization'))
+        jwt_payload = decode_jwt_payload(self.common_request_headers.get('x-authorization'))
 
-            # Write logs to file with timestamp
-            with open(log_path, "a") as f:
-                f.write(f"\n--- Log Entry: {datetime.now().isoformat()} ---\n")
-                f.write("JWT Payload:\n")
-                f.write(json.dumps(jwt_payload, indent=2) + "\n\n")
-                f.write("Response Data:\n")
-                f.write(str(res.data) + "\n")
-                f.write("--- End of Entry ---\n")
+        # Write logs to file with timestamp
+        with open(log_path, "a") as f:
+            f.write(f"\n--- Log Entry: {datetime.now().isoformat()} ---\n")
+            f.write("JWT Payload:\n")
+            f.write(json.dumps(jwt_payload, indent=2) + "\n\n")
+            f.write("Response Data:\n")
+            f.write(str(res.data) + "\n")
+            f.write("--- End of Entry ---\n")
 
 
-            if res.data:
-                res = todict(res.data)
-        except Exception as err:
-            raise UnhealthyControlServerError(str(err))
-
+        if res.data:
+            res = todict(res.data)
+        
         upload_url = res['upload_url']
         app_bucket_id = res['app_bucket_id']
         res_filename = res['filename']
@@ -275,21 +270,19 @@ class AcceleratorJobProjectService:
             verify=False,
         )
 
-        try:
-            self.http_client_request(
-                "POST",
-                f"{self.cli_base_url}/register-log-file/",
-                json=dict(
-                    filename=res_filename,
-                    app_bucket_id=app_bucket_id
-                ),
-                headers=self.common_request_headers
-            )
-        except Exception as err:
-            raise UnhealthyControlServerError(str(err))
+        
+        self.http_client_request(
+            "POST",
+            f"{self.cli_base_url}/register-log-file/",
+            json=dict(
+                filename=res_filename,
+                app_bucket_id=app_bucket_id
+            ),
+            headers=self.common_request_headers
+        )
+        
 
-        if not is_healthy:
-            raise UnhealthyControlServerError('Unhealthy control server.')
+        return is_healthy
 
         
 
