@@ -26,11 +26,11 @@ class AccAPIError(Exception):
 retries = urllib3.util.Retry(total=10, backoff_factor=1)
 
 http_client = urllib3.poolmanager.PoolManager(
-    num_pools=20, retries=retries
+    num_pools=20, retries=retries, maxsize=2000, block=True
 )
 
 http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
-    cert_reqs="CERT_NONE", num_pools=20, retries=retries
+    cert_reqs="CERT_NONE", num_pools=20, retries=retries, maxsize=2000, block=True
 )
 
 class AcceleratorJobProjectService:
