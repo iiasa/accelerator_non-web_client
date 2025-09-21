@@ -3,6 +3,7 @@ import click
 import glob
 import os
 import typer
+from pathlib import Path
 import requests
 import warnings
 import importlib.util
@@ -222,5 +223,66 @@ def dispatch(
 
     print(f"Dispatched root job #ID: {root_job_id}")
 
+@app.command()
+def copy(
+    acc_src: Annotated[str, typer.Argument(help="Source path in Accelerator project space")],
+    destination: Annotated[str, typer.Option(..., "-d", help="Destination directory")] = "./",
+    token_pass: Annotated[str, typer.Option(..., "-t", help="Destination directory")] = "",
+):
+    access_token = get_token()
+    server_url = get_server_url()
 
+    term_cli_project_service = AcceleratorTerminalCliProjectService(
+        user_token=access_token,
+        server_url=server_url,
+        verify_cert=(not ACCLI_DEBUG),
+    )
 
+    dest_path = Path(destination).expanduser().resolve()
+    dest_path.mkdir(parents=True, exist_ok=True)
+
+    filenames: list[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        transient=True,
+    ) as progress:
+
+        for filename in filenames:
+            local_file = dest_path / filename
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+
+            final_file = local_file
+            partial_file = local_file.with_suffix(local_file.suffix + ".part")
+
+            if final_file.exists():
+                typer.echo(f"Skipping {final_file} (already exists)")
+                continue
+
+            typer.echo(f"Downloading {filename} -> {final_file}")
+            try:
+                file_url = term_cli_project_service.get_file_url_from_repo(filename, token_pass=token_pass)
+                with requests.get(file_url, stream=True, verify=(not ACCLI_DEBUG)) as r:
+                    r.raise_for_status()
+                    total = int(r.headers.get("Content-Length", 0))
+
+                    task = progress.add_task(
+                        f"[cyan]Downloading {filename}", total=total or None
+                    )
+
+                    with open(partial_file, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                progress.update(task, advance=len(chunk))
+
+                partial_file.rename(final_file)
+                typer.echo(f"✔ Downloaded {final_file}")
+
+            except Exception as e:
+                if partial_file.exists():
+                    partial_file.unlink()
+                typer.echo(f"✖ Failed to download {filename}: {e}", err=True)

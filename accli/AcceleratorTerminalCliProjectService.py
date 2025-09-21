@@ -93,11 +93,11 @@ class AcceleratorTerminalCliProjectService:
 
         return todict(res.data)
     
-    def get_file_url_from_repo(self, filename):
+    def get_file_url_from_repo(self, filename, token_pass=""):
         project_slug = filename.split('/')[0]
         res = self.http_client_request(
             "GET", 
-            f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}",
+            f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}&token_pass={token_pass}",
             headers=self.common_request_headers
         )
         if res.data:
@@ -363,5 +363,17 @@ class AcceleratorTerminalCliProjectService:
                 )
 
             raise err
-
     
+
+    def enumerate_files_by_prefix(self, prefix, token_pass=""):
+        project_slug = prefix.split('/')[0]
+
+        b64_encoded_prefix = base64.b64encode(prefix.encode()).decode()
+
+        res = self.http_client_request(
+            "GET", 
+            f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}/?token_pass={token_pass}",
+            headers=self.common_request_headers
+        )
+        if res.data:
+            return todict(res.data)
