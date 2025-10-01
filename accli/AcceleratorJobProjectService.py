@@ -37,7 +37,7 @@ class AcceleratorJobProjectService:
     def __init__(
             self,
             user_token, 
-            server_url='http://accelerator-api.iiasa.ac.at',
+            server_url='http://accelerator.iiasa.ac.at',
             verify_cert=(not ACCLI_DEBUG)
         ):
         

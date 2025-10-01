@@ -50,7 +50,7 @@ def about():
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at", 
+    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at", 
     webcli: Annotated[str, typer.Option(..., '-c', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
@@ -158,7 +158,7 @@ def validate(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
     filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
-    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
 ):
     
 
@@ -181,7 +181,7 @@ def validate(
 def dispatch(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-    server: Annotated[str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator-api.iiasa.ac.at",
+    server: Annotated[str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
     workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
