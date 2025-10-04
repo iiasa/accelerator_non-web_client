@@ -9,6 +9,7 @@ import warnings
 import importlib.util
 from rich import print
 from typing_extensions import Annotated
+from contextlib import contextmanager
 
 from accli.token import save_token_details, get_token, get_server_url, set_github_app_token, set_project_slug
 
@@ -38,6 +39,17 @@ def get_size(path):
         size += os.path.getsize(file)
 
     return size
+
+
+@contextmanager
+def pushd(new_dir):
+    """Temporarily change the working directory."""
+    prev_dir = os.getcwd()
+    os.chdir(new_dir)
+    try:
+        yield
+    finally:
+        os.chdir(prev_dir)
 
 
 @app.command()
@@ -181,7 +193,6 @@ def validate(
 def dispatch(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
     root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-    server: Annotated[str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
     workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
@@ -194,32 +205,35 @@ def dispatch(
         verify_cert=(not ACCLI_DEBUG)
     )
 
-    base_dir = os.getcwd()
-    
-    if base_dir.endswith('/'):
-        workflow_filepath = f"{base_dir}{workflow_filename}"
+    # ✅ Resolve the workflow file path properly
+    if os.path.isabs(workflow_filename):
+        workflow_filepath = workflow_filename
     else:
-        workflow_filepath = f"{base_dir}/{workflow_filename}"
+        workflow_filepath = os.path.abspath(os.path.join(os.getcwd(), workflow_filename))
 
-    spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
+    if not os.path.isfile(workflow_filepath):
+        raise FileNotFoundError(f"Workflow file not found: {workflow_filepath}")
 
-    module = importlib.util.module_from_spec(spec)
+    workflow_dir = os.path.dirname(workflow_filepath)
 
-    spec.loader.exec_module(module)
+    # ✅ Temporarily switch to the workflow file's directory
+    with pushd(workflow_dir):
+        # ✅ Import the module dynamically
+        spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
 
-    job_to_dispatch = getattr(module, root_task_variable)
+        job_to_dispatch = getattr(module, root_task_variable, None)
 
+        if not job_to_dispatch:
+            raise ValueError(f"No root task variable found with name '{root_task_variable}' in {workflow_filepath}")
 
-    if not job_to_dispatch:
-        raise ValueError(f"No root task variable found with name {root_task_variable}")
-    
-    print(job_to_dispatch.description)
+        print(job_to_dispatch.description)
 
-
-    root_job_id = term_cli_project_service.dispatch(
-        project_slug,
-        job_to_dispatch.description
-    )
+        root_job_id = term_cli_project_service.dispatch(
+            project_slug,
+            job_to_dispatch.description
+        )
 
     print(f"Dispatched root job #ID: {root_job_id}")
 
