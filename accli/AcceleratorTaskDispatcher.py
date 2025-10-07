@@ -1,4 +1,3 @@
-import git
 import os
 import zipfile
 import hashlib
@@ -10,7 +9,6 @@ from typing import Optional, List, Dict
 from pydantic.v1 import BaseModel, root_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
-    get_github_app_token, 
     get_token, get_server_url, 
     get_project_slug
 )
