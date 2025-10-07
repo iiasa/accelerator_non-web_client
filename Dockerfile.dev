@@ -1,2 +1,19 @@
+FROM python:3.12-slim AS builder
 
-FROM python:3.7.17
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust (required to build the PyApp launcher)
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Download and unpack the latest PyApp source
+WORKDIR /tmp
+RUN curl -sSL https://github.com/ofek/pyapp/releases/latest/download/source.tar.gz -o pyapp-source.tar.gz \
+    && tar -xzf pyapp-source.tar.gz \
+    && mv pyapp-v* pyapp-latest
+
+# Install PyApp from source
+WORKDIR /tmp/pyapp-latest

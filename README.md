@@ -106,8 +106,10 @@ Follow the official Python packaging tutorial:
 Consider bundling with Nuitka:
 
 ```bash
-nuitka --standalone --onefile --static-libpython=yes \
+nuitka --standalone --onefile \
        --include-package=accli \
-       --output-dir=build \
-       -m accli.cli:app
+       --include-module=accli \
+       --no-prefer-source-code \
+       --nofollow-import-to=inspect,token,tokenize,linecache \
+       accli/cli.py
 ```

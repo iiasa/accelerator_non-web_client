@@ -19,7 +19,6 @@ dependencies = [
     "requests>=2.25.1",       # Commonly supported baseline
     "jsonschema>=4.5.1",      # 4.5.1+ is safe across libraries
     "pydantic>=2.0",          # Major version 2 required if you're using v2 features
-    "gitpython>=3.1.30"       # Minimum stable with good Python 3.7+ support
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
