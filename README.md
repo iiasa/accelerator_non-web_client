@@ -100,16 +100,3 @@ Follow the official Python packaging tutorial:
     ```
 
 ---
-
-## 🧪 Experimental
-
-Consider bundling with Nuitka:
-
-```bash
-nuitka --standalone --onefile \
-       --include-package=accli \
-       --include-module=accli \
-       --no-prefer-source-code \
-       --nofollow-import-to=inspect,token,tokenize,linecache \
-       accli/cli.py
-```
