@@ -1,4 +1,4 @@
-$Repo = "iiasa/accli"
+$Repo = "iiasa/accelerator_non-web_client"
 $BinaryName = "accli.exe"
 
 # Fetch latest version

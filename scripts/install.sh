@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="iiasa/accli"
+REPO="iiasa/accelerator_non-web_client"
 BINARY_NAME="accli"
 
 # Detect OS
