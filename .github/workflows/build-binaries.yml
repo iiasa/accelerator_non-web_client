@@ -34,6 +34,16 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Zig
+        if: matrix.os == 'ubuntu-latest'
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          zig-version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        if: matrix.os == 'ubuntu-latest'
+        run: pip install cargo-zigbuild
+
       - name: Build Wheel
         run: |
           pip install build
@@ -59,10 +69,16 @@ jobs:
           export PYAPP_PROJECT_PATH="$ABS_WHEEL_PATH"
           export PYAPP_FULL_ISOLATION=1
           
-          cargo build --release
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
+            BINARY_SOURCE="target/x86_64-unknown-linux-gnu/release/pyapp"
+          else
+            cargo build --release
+            BINARY_SOURCE="target/release/pyapp${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          fi
           
           mkdir -p ../dist/binaries
-          cp target/release/pyapp${{ matrix.os == 'windows-latest' && '.exe' || '' }} ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          cp "$BINARY_SOURCE" ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
