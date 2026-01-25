@@ -68,6 +68,7 @@ jobs:
           export PYAPP_PROJECT_VERSION="$VERSION"
           export PYAPP_PROJECT_PATH="$ABS_WHEEL_PATH"
           export PYAPP_FULL_ISOLATION=1
+          export PYAPP_DISTRIBUTION_EMBED=1
           
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
