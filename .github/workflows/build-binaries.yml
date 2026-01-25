@@ -1,0 +1,95 @@
+name: Build Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: accli-linux
+            binary_name: accli
+          - os: windows-latest
+            artifact_name: accli-windows
+            binary_name: accli.exe
+          - os: macos-latest
+            artifact_name: accli-macos
+            binary_name: accli
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Wheel
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Download PyApp
+        shell: bash
+        run: |
+          curl -sSL https://github.com/ofek/pyapp/releases/latest/download/source.tar.gz -o pyapp-source.tar.gz
+          mkdir pyapp-latest
+          tar -xzf pyapp-source.tar.gz -C pyapp-latest --strip-components=1
+
+      - name: Build Binary
+        shell: bash
+        run: |
+          WHEEL_PATH=$(ls dist/*.whl | head -n 1)
+          ABS_WHEEL_PATH=$(realpath "$WHEEL_PATH")
+          VERSION=$(grep 'VERSION =' accli/_version.py | cut -d'"' -f2 | sed 's/^v//')
+          
+          cd pyapp-latest
+          export PYAPP_PROJECT_NAME="accli"
+          export PYAPP_PROJECT_VERSION="$VERSION"
+          export PYAPP_PROJECT_PATH="$ABS_WHEEL_PATH"
+          export PYAPP_FULL_ISOLATION=1
+          
+          cargo build --release
+          
+          mkdir -p ../dist/binaries
+          cp target/release/pyapp* ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/binaries
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/binaries/accli-linux/accli-linux
+            dist/binaries/accli-windows/accli-windows.exe
+            dist/binaries/accli-macos/accli-macos
+          generate_release_notes: true

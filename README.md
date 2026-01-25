@@ -29,6 +29,22 @@ This client uses **device authentication** via Auth0.
 
 ### 📦 Installation
 
+#### Option 1: Standalone Binaries (Recommended)
+
+No Python install required. Run the appropriate command for your system:
+
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/iiasa/accli/master/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/iiasa/accli/master/scripts/install.ps1 | iex
+```
+
+#### Option 2: Via PIP
+
 ```bash
 pip install accli --user
 ```
