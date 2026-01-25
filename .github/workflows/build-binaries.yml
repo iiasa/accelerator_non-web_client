@@ -62,7 +62,7 @@ jobs:
           cargo build --release
           
           mkdir -p ../dist/binaries
-          cp target/release/pyapp* ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          cp target/release/pyapp${{ matrix.os == 'windows-latest' && '.exe' || '' }} ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
