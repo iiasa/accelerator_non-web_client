@@ -1,18 +1,11 @@
-import typing
-import typer
-import json
-import os
-import subprocess
 import csv
-import uuid
-import itertools
-from typing import Optional
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import print
+import typing
 
+import typer
 from jsonschema import validate as jsonschema_validate
 from jsonschema.exceptions import ValidationError, SchemaError
-
+from rich import print
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 if typing.TYPE_CHECKING:
     from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
@@ -30,7 +23,7 @@ class CsvRegionalTimeseriesValidator():
         dataset_template_slug,
         input_filepath,
         project_service: 'AcceleratorTerminalCliProjectService',
-        csv_fieldnames: Optional[typing.List[str]]=None,
+        csv_fieldnames: list[str] | None=None,
         
     ):
         self.project_slug = project_slug
