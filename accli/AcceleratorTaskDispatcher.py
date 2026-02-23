@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import requests
 from functools import lru_cache
-from typing import Optional, List, Dict
 from pydantic.v1 import BaseModel, root_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
@@ -119,27 +118,27 @@ class JobDispatchModel(BaseModel):
 
     execute_cluster: str
     job_location: str
-    job_args: List
-    job_kwargs: Dict
+    job_args: list
+    job_kwargs: dict
 
-    required_cores: Optional[float]
-    required_ram: Optional[float]
-    required_storage_local: Optional[float]
+    required_cores: float | None = None
+    required_ram: float | None = None
+    required_storage_local: float | None = None
 
     # is ignored if it is a callback and child of non-free node jobs
-    required_storage_workflow: Optional[float]
+    required_storage_workflow: float | None = None
 
-    job_secrets: Optional[dict] = {}
+    job_secrets: dict | None = {}
 
-    timeout: Optional[int]
-    pvc_id: Optional[str]
-    node_id: Optional[str]
+    timeout: int | None = None
+    pvc_id: str | None = None
+    node_id: str | None = None
 
     ignore_duplicate_job: bool = False
     free_node: bool = False  # Only applies to immediate children jobs
 
-    children: List['JobDispatchModel'] = []
-    callback: Optional['JobDispatchModel']
+    children: list['JobDispatchModel'] = []
+    callback: 'JobDispatchModel | None' = None
 
     def dict(self, *args, **kwargs):
         result = super().dict(*args, **kwargs)
@@ -165,29 +164,29 @@ class WKubeTaskMeta(BaseModel):
     # is ignored if it is a callback and child of non-free node jobs
     required_storage_workflow: float
 
-    job_secrets: Optional[dict] = {}
+    job_secrets: dict | None = {}
 
     timeout: int
 
 
 class WKubeTaskKwargs(BaseModel):
-    docker_image: Optional[str]
+    docker_image: str | None = None
 
     job_folder: str = './'
 
-    repo_url: Optional[str]  # required when docker image is not present
-    repo_branch: Optional[str]  # required when docker image is not present
+    repo_url: str | None = None  # required when docker image is not present
+    repo_branch: str | None = None  # required when docker image is not present
 
-    docker_filename: Optional[str]  # when not docker image;
-    base_stack: Optional[str]  # when not github docker file #TODO add enum class of available base stack
+    docker_filename: str | None = None  # when not docker image;
+    base_stack: str | None = None  # when not github docker file #TODO add enum class of available base stack
 
     force_build: bool = False
 
     command: str  # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.
 
-    conf: Dict[str, str] = {}
+    conf: dict[str, str] = {}
 
-    build_timeout: Optional[int]
+    build_timeout: int | None = None
 
     def dict(self, *args, **kwargs):
         result = super().dict(*args, **kwargs)
