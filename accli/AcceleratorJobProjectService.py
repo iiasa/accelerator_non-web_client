@@ -85,6 +85,8 @@ class AcceleratorJobProjectService:
     
     
     def enumerate_files_by_prefix(self, prefix):
+        raise NotImplementedError("filename parameter is not implemented yet")
+
         project_slug = filename.split('/')[0]
 
 
@@ -97,7 +99,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
-    
+
     
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
