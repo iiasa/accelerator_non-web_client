@@ -1,7 +1,7 @@
-from __future__ import annotations
-
 import os
 import io
+from typing import Union, List, Tuple
+
 import requests
 import json
 import base64
@@ -294,7 +294,7 @@ class AcceleratorJobProjectService:
             app_bucket_id,
             filename,
             upload_id,
-            parts: list[tuple[str, str]],
+            parts: List[Tuple[str, str]],
             is_log_file=False
     ):
         headers = {"Content-Type": "application/json"}
@@ -321,7 +321,7 @@ class AcceleratorJobProjectService:
             app_bucket_id,
             filename,
             upload_id,
-            parts: list[tuple[str, str]]
+            parts: List[Tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -342,7 +342,7 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def complete_update_multipart_upload(
-            self, filename, upload_id, parts: list[tuple[str, str]]
+            self, filename, upload_id, parts: List[Tuple[str, str]]
     ):
 
         headers = {"Content-Type": "application/json"}
@@ -421,7 +421,7 @@ class AcceleratorJobProjectService:
             validated_bucket_object_id: int,
             dataset_template_id: int,
             validated_metadata: dict,
-            validation_supporting_bucket_object_ids: list[int]
+            validation_supporting_bucket_object_ids: List[int]
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -758,7 +758,7 @@ class Fs:
         )
 
     @staticmethod
-    def write_file(source: str | io.BytesIO, dest_filepath):
+    def write_file(source: Union[str, io.BytesIO], dest_filepath):
         user_token = os.environ.get("ACC_JOB_TOKEN", None)
         server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 

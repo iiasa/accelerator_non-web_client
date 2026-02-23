@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 import csv
 import typing
+from typing import Optional, List
 
 import typer
 from jsonschema import validate as jsonschema_validate
@@ -27,7 +26,7 @@ class CsvRegionalTimeseriesValidator():
             dataset_template_slug,
             input_filepath,
             project_service: 'AcceleratorTerminalCliProjectService',
-            csv_fieldnames: list[str] | None = None,
+            csv_fieldnames: Optional[List[str]] = None,
 
     ):
         self.project_slug = project_slug

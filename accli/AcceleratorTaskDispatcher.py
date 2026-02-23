@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 import os
 import zipfile
 import hashlib
 import shutil
 import tempfile
+from typing import Optional, Dict, List
+
 import requests
 from functools import lru_cache
 from pydantic import BaseModel, model_validator
@@ -116,24 +116,24 @@ class JobDispatchModel(BaseModel):
     job_args: list
     job_kwargs: dict
 
-    required_cores: float | None = None
-    required_ram: float | None = None
-    required_storage_local: float | None = None
+    required_cores: Optional[float] = None
+    required_ram: Optional[float] = None
+    required_storage_local: Optional[float] = None
 
     # is ignored if it is a callback and child of non-free node jobs
-    required_storage_workflow: float | None = None
+    required_storage_workflow: Optional[float] = None
 
-    job_secrets: dict | None = {}
+    job_secrets: Optional[dict] = {}
 
-    timeout: int | None = None
-    pvc_id: str | None = None
-    node_id: str | None = None
+    timeout: Optional[int] = None
+    pvc_id: Optional[str] = None
+    node_id: Optional[str] = None
 
     ignore_duplicate_job: bool = False
     free_node: bool = False  # Only applies to immediate children jobs
 
-    children: list['JobDispatchModel'] = []
-    callback: 'JobDispatchModel | None' = None
+    children: List['JobDispatchModel'] = []
+    callback: Optional['JobDispatchModel'] = None
 
     def model_dump(self, *args, **kwargs):
         result = super().model_dump(*args, **kwargs)
@@ -159,29 +159,29 @@ class WKubeTaskMeta(BaseModel):
     # is ignored if it is a callback and child of non-free node jobs
     required_storage_workflow: float
 
-    job_secrets: dict | None = {}
+    job_secrets: Optional[dict] = {}
 
     timeout: int
 
 
 class WKubeTaskKwargs(BaseModel):
-    docker_image: str | None = None
+    docker_image: Optional[str] = None
 
     job_folder: str = './'
 
-    repo_url: str | None = None  # required when docker image is not present
-    repo_branch: str | None = None  # required when docker image is not present
+    repo_url: Optional[str] = None  # required when docker image is not present
+    repo_branch: Optional[str] = None  # required when docker image is not present
 
-    docker_filename: str | None = None  # when not docker image;
-    base_stack: str | None = None  # when not github docker file #TODO add enum class of available base stack
+    docker_filename: Optional[str] = None  # when not docker image;
+    base_stack: Optional[str] = None  # when not github docker file #TODO add enum class of available base stack
 
     force_build: bool = False
 
     command: str  # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.
 
-    conf: dict[str, str] = {}
+    conf: Dict[str, str] = {}
 
-    build_timeout: int | None = None
+    build_timeout: Optional[int] = None
 
     def model_dump(self, *args, **kwargs):
         result = super().model_dump(*args, **kwargs)

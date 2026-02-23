@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import glob
 import importlib.util
 import os
@@ -10,6 +8,8 @@ from pathlib import Path
 
 import requests
 import typer
+from typing import List
+
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from accli.token import save_token_details, get_token, get_server_url, set_project_slug
@@ -262,7 +262,7 @@ def copy(
     dest_path = Path(destination).expanduser().resolve()
     dest_path.mkdir(parents=True, exist_ok=True)
 
-    filenames: list[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
+    filenames: List[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
 
     with Progress(
             TextColumn("[progress.description]{task.description}"),
