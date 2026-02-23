@@ -1,12 +1,10 @@
-import os
-import requests
-import urllib3
-import json
 import base64
 import concurrent.futures
-from typing import List, Tuple
-from rich.progress import Progress
+import json
+import os
 
+import requests
+import urllib3
 from accli.common import todict
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
@@ -206,7 +204,7 @@ class AcceleratorTerminalCliProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: List[Tuple[str, str]]
+        parts: list[tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 
