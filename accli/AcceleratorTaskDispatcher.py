@@ -3,6 +3,8 @@ import zipfile
 import hashlib
 import shutil
 import tempfile
+from typing import Dict
+
 import requests
 from functools import lru_cache
 from pydantic.v1 import BaseModel, root_validator
@@ -119,7 +121,7 @@ class JobDispatchModel(BaseModel):
     execute_cluster: str
     job_location: str
     job_args: list
-    job_kwargs: dict
+    job_kwargs: Dict
 
     required_cores: float | None = None
     required_ram: float | None = None
@@ -184,7 +186,7 @@ class WKubeTaskKwargs(BaseModel):
 
     command: str  # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.
 
-    conf: dict[str, str] = {}
+    conf: Dict[str, str] = {}
 
     build_timeout: int | None = None
 
