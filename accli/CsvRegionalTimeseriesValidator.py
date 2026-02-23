@@ -12,20 +12,22 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 if typing.TYPE_CHECKING:
     from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 
+
 def lower_rows(iterator):
     # return itertools.chain([next(iterator).lower()], iterator)
     for item in iterator:
         yield item.lower()
 
+
 class CsvRegionalTimeseriesValidator():
     def __init__(
-        self,
-        *,
-        project_slug,
-        dataset_template_slug,
-        input_filepath,
-        project_service: 'AcceleratorTerminalCliProjectService',
-        csv_fieldnames: list[str] | None=None,
+            self,
+            *,
+            project_slug,
+            dataset_template_slug,
+            input_filepath,
+            project_service: 'AcceleratorTerminalCliProjectService',
+            csv_fieldnames: list[str] | None = None,
 
     ):
         self.project_slug = project_slug
@@ -37,15 +39,11 @@ class CsvRegionalTimeseriesValidator():
 
         self.csv_fieldnames = csv_fieldnames
 
-
-
         self.errors = dict()
-
 
     def get_map_documents(self, field_name):
         map_documents = self.rules.get(f'map_{field_name}')
         return map_documents
-
 
     def init_validation_metadata(self):
         self.validation_metadata = {
@@ -55,7 +53,6 @@ class CsvRegionalTimeseriesValidator():
             }
         }
 
-
     def set_csv_regional_validation_rules(self):
 
         dataset_template_details = self.project_service.get_dataset_template_details(
@@ -63,7 +60,7 @@ class CsvRegionalTimeseriesValidator():
             self.dataset_template_slug
         )
 
-        self.rules =  dataset_template_details.get('rules')
+        self.rules = dataset_template_details.get('rules')
 
         assert self.rules, \
             f"No dataset template rules found for dataset_template id: \
@@ -94,7 +91,6 @@ class CsvRegionalTimeseriesValidator():
                 f"Invalid data. Template id: {self.dataset_template_id}. Data: {str(validation_error)}. Original exception: {str(validation_error)}"
             )
 
-
         for key in self.rules['root']['properties']:
 
             if key == self.time_dimension.lower():
@@ -117,21 +113,18 @@ class CsvRegionalTimeseriesValidator():
             if key == self.value_dimension:
                 continue
 
-
             map_documents = self.get_map_documents(key)
 
             if map_documents:
                 if row[key] not in map_documents:
-                    raise ValueError(f"'{row[key]}' must be one of {map_documents.keys()}" )
-
+                    raise ValueError(f"'{row[key]}' must be one of {map_documents.keys()}")
 
             if self.validation_metadata.get(key):
-                if len(self.validation_metadata[key]) <= 200: #limit harvest
+                if len(self.validation_metadata[key]) <= 200:  # limit harvest
                     self.validation_metadata[key].add(row[key])
 
             else:
                 self.validation_metadata[key] = set([row[key]])
-
 
         extra_template_validators = self.rules.get('template_validators')
 
@@ -156,7 +149,6 @@ class CsvRegionalTimeseriesValidator():
                         else:
                             rhs = rhs[pointer]
 
-
                     if condition == 'value_equals':
                         if lhs.lower() != rhs.lower():
                             raise ValueError(
@@ -170,9 +162,10 @@ class CsvRegionalTimeseriesValidator():
                             )
 
         return row
+
     def get_validated_rows(self, filepath):
         with open(filepath) as csvfile:
-        # with open(self.temp_downloaded_filepath) as csvfile:
+            # with open(self.temp_downloaded_filepath) as csvfile:
             reader = csv.DictReader(
                 lower_rows(csvfile),
                 fieldnames=self.csv_fieldnames,
@@ -186,13 +179,13 @@ class CsvRegionalTimeseriesValidator():
 
                 try:
                     row = self.validate_row_data(row)
-                    row[self.region_layer_dimension] = self.rules[f'map_{self.region_dimension}'][row[self.region_dimension]]['region_layer']
+                    row[self.region_layer_dimension] = \
+                    self.rules[f'map_{self.region_dimension}'][row[self.region_dimension]]['region_layer']
                 except Exception as err:
                     if len(self.errors) <= 50:
                         self.errors[str(err)] = str(row)
 
                 yield row
-
 
     def __call__(self):
 
@@ -200,15 +193,14 @@ class CsvRegionalTimeseriesValidator():
         self.init_validation_metadata()
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            transient=True,
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
         ) as progress:
             progress.add_task(description="[bold cyan]Validating dataset. Please wait...", total=None)
 
             for row in self.get_validated_rows(self.input_filepath):
                 pass
-
 
         if self.errors:
             for key in self.errors:
@@ -219,6 +211,3 @@ class CsvRegionalTimeseriesValidator():
         else:
             print("[bold green]Data validated against selected template.[/bold green] 🎉🎉")
             typer.Exit(0)
-
-
-

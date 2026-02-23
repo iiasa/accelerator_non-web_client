@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from tinydb import TinyDB, Query
+
+from tinydb import TinyDB
 
 
 def get_db_path():
