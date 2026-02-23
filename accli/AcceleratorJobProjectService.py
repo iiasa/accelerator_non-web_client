@@ -8,7 +8,6 @@ import base64
 import urllib3
 from urllib.parse import quote
 from pathlib import Path
-from typing import List, Tuple
 
 from accli.common import todict
 
@@ -36,11 +35,11 @@ http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
 class AcceleratorJobProjectService:
     def __init__(
             self,
-            user_token, 
+            user_token,
             server_url='http://accelerator.iiasa.ac.at',
             verify_cert=(not ACCLI_DEBUG)
         ):
-        
+
         self.user_token = user_token
 
         if verify_cert:
@@ -54,7 +53,7 @@ class AcceleratorJobProjectService:
         }
 
     def http_client_request(self, *args, **kwargs):
-        
+
         if urllib3.__version__.startswith('1.'):
             if 'json' in kwargs:
                 json_dict = kwargs.pop('json')
@@ -66,24 +65,24 @@ class AcceleratorJobProjectService:
                 encoded_data = json.dumps(json_dict).encode('utf-8')
 
                 kwargs['body'] = encoded_data
-        
+
         res = self.http_client.request(*args, **kwargs)
 
         if str(res.status)[0] in ['4', '5']:
             raise AccAPIError(
-                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
+                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}",
             )
         return res
 
     def get_file_stat(self, bucket_object_id):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/file-stat/{bucket_object_id}",
             headers=self.common_request_headers
         )
         return todict(res.data)
-    
-    
+
+
     def enumerate_files_by_prefix(self, prefix):
         raise NotImplementedError("filename parameter is not implemented yet")
 
@@ -93,30 +92,30 @@ class AcceleratorJobProjectService:
         b64_encoded_prefix = base64.b64encode(prefix.encode()).decode()
 
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}",
             headers=self.common_request_headers
         )
         if res.data:
             return todict(res.data)
 
-    
+
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}",
             headers=self.common_request_headers
         )
         if res.data:
             return todict(res.data)
-    
+
     def get_dataset_type(self, *args, **kwargs):
         return self.get_bucket_object_validation_type(*args, **kwargs)
 
     def get_bucket_object_validation_type(self, bucket_object_id):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/dataset-type/{bucket_object_id}",
             headers=self.common_request_headers
         )
@@ -126,7 +125,7 @@ class AcceleratorJobProjectService:
 
     def get_filename_dataset_type(self, filename):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/filename-dataset-type/?filename={filename}",
             headers=self.common_request_headers
         )
@@ -135,7 +134,7 @@ class AcceleratorJobProjectService:
 
     def get_filename_validation_details(self, filename):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/filename-validation-detail/?filename={filename}",
             headers=self.common_request_headers
         )
@@ -144,17 +143,17 @@ class AcceleratorJobProjectService:
 
     def get_bucket_object_validation_details(self, bucket_object_id):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/validation-detail/{bucket_object_id}",
             headers=self.common_request_headers
         )
         if res.data:
             return todict(res.data)
 
-    
+
     def get_file_url(self, bucket_object_id):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/file-url/{bucket_object_id}",
             headers=self.common_request_headers
         )
@@ -176,15 +175,15 @@ class AcceleratorJobProjectService:
             f"{self.cli_base_url}/is-healthy/",
             headers=self.common_request_headers
         )
-    
+
         if res.data:
             res = todict(res.data)
-        
+
         is_healthy = res['is_healthy']
         return is_healthy
-        
+
     def add_log_file(self, data: bytes, filename):
-        
+
         res = self.http_client_request(
             "GET",
             f"{self.cli_base_url}/presigned-log-upload-url/?filename={filename}",
@@ -195,7 +194,7 @@ class AcceleratorJobProjectService:
             res = todict(res.data)
         else:
             raise ValueError(f"Unable to get presign url in response: {res.data}")
-        
+
         upload_url = res['upload_url']
         app_bucket_id = res['app_bucket_id']
         res_filename = res['filename']
@@ -208,7 +207,7 @@ class AcceleratorJobProjectService:
             verify=False,
         )
 
-        
+
         self.http_client_request(
             "POST",
             f"{self.cli_base_url}/register-log-file/",
@@ -218,7 +217,7 @@ class AcceleratorJobProjectService:
             ),
             headers=self.common_request_headers
         )
-        
+
         return is_healthy
 
 
@@ -230,7 +229,7 @@ class AcceleratorJobProjectService:
         part_number
     ):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/put-create-signed-url",
             fields=dict(
                 app_bucket_id=app_bucket_id,
@@ -250,7 +249,7 @@ class AcceleratorJobProjectService:
         part_number,
     ):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/put-update-signed-url",
             fields=dict(
                 filename=filename,
@@ -265,7 +264,7 @@ class AcceleratorJobProjectService:
     def get_put_create_multipart_upload_id(self, filename):
         encoded_filename = quote(filename)
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/multipart-upload-id/?filename={encoded_filename}",
             headers=self.common_request_headers
         )
@@ -278,7 +277,7 @@ class AcceleratorJobProjectService:
     def get_validator_create_multipart_upload_id(self, filename):
         encoded_filename = quote(filename)
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/validator-multipart-upload-id/?filename={encoded_filename}",
             headers=self.common_request_headers
         )
@@ -290,7 +289,7 @@ class AcceleratorJobProjectService:
     def get_put_update_multipart_upload_id(self, filename):
         encoded_filename = quote(filename)
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/update-multipart-upload-id/?filename={encoded_filename}",
             headers=self.common_request_headers
         )
@@ -302,7 +301,7 @@ class AcceleratorJobProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: List[Tuple[str, str]],
+        parts: list[tuple[str, str]],
         is_log_file=False
     ):
         headers = {"Content-Type": "application/json"}
@@ -310,7 +309,7 @@ class AcceleratorJobProjectService:
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/complete-create-multipart-upload",
             json=dict(
                 app_bucket_id=app_bucket_id,
@@ -330,14 +329,14 @@ class AcceleratorJobProjectService:
         app_bucket_id,
         filename,
         upload_id,
-        parts: List[Tuple[str, str]]
+        parts: list[tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/complete-validator-multipart-upload",
             json=dict(
                 app_bucket_id=app_bucket_id,
@@ -351,7 +350,7 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def complete_update_multipart_upload(
-        self, filename, upload_id, parts: List[Tuple[str, str]]
+        self, filename, upload_id, parts: list[tuple[str, str]]
     ):
 
         headers = {"Content-Type": "application/json"}
@@ -359,7 +358,7 @@ class AcceleratorJobProjectService:
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/complete-update-multipart-upload",
             json=dict(
                 filename=filename,
@@ -372,13 +371,13 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def abort_create_multipart_upload(self, app_bucket_id, filename, upload_id):
-        
+
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/abort-create-multipart-upload",
             json=dict(
                 app_bucket_id=app_bucket_id,
@@ -389,7 +388,7 @@ class AcceleratorJobProjectService:
         )
 
     def abort_update_multipart_upload(self, filename, upload_id):
-        
+
         headers = {
             # "Content-Type": "application/json"
         }
@@ -397,7 +396,7 @@ class AcceleratorJobProjectService:
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/abort-update-multipart-upload",
             json=dict(
                 filename=filename,
@@ -405,7 +404,7 @@ class AcceleratorJobProjectService:
             ),
             headers=headers
         )
-   
+
     # # TODO @wrufesh ensure it requires special token
     # def register_iamc_validation(
     #     self, validated_bucket_object_id, indexdb_bucket_object_id
@@ -426,18 +425,18 @@ class AcceleratorJobProjectService:
     #     )
 
     def register_validation(
-        self, 
+        self,
         validated_bucket_object_id: int,
         dataset_template_id: int,
         validated_metadata: dict,
-        validation_supporting_bucket_object_ids: List[int]
+        validation_supporting_bucket_object_ids: list[int]
     ):
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/register-validation",
             json=dict(
                 validated_bucket_object_id=validated_bucket_object_id,
@@ -449,7 +448,7 @@ class AcceleratorJobProjectService:
         )
 
     def get_dataset_template_details(
-        self, 
+        self,
         dataset_template_id
     ):
         headers = {"Content-Type": "application/json"}
@@ -457,14 +456,14 @@ class AcceleratorJobProjectService:
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/dataset-template-detail/{dataset_template_id}",
             headers=headers
         )
 
         return todict(res.data)
 
-      
+
 
     def read_part_data(self, stream, size, part_data=b"", progress=None):
         """Read part data of given size from stream."""
@@ -525,7 +524,7 @@ class AcceleratorJobProjectService:
                         app_bucket_id,
                         uniqified_filename,
                     ) = self.get_put_create_multipart_upload_id(
-                        filename, 
+                        filename,
                         # headers=headers
                     )
 
@@ -677,7 +676,7 @@ class AcceleratorJobProjectService:
                         app_bucket_id,
                         uniqified_filename,
                     ) = self.get_validator_create_multipart_upload_id(
-                        filename, 
+                        filename,
                         # headers=headers
                     )
 
@@ -719,7 +718,7 @@ class AcceleratorJobProjectService:
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "POST", 
+            "POST",
             f"{self.cli_base_url}/webhook-event",
             json=dict(
                 type='STATUS_UPDATE',
@@ -735,7 +734,7 @@ class Fs:
     def write_stream_remote(filestream, dest_filepath, user_token, server_url):
 
         accelerator_job_service = AcceleratorJobProjectService(
-            user_token, 
+            user_token,
             server_url=server_url,
             verify_cert=(not ACCLI_DEBUG)
         )
@@ -757,9 +756,9 @@ class Fs:
 
         if not (user_token and server_url):
             raise ValueError("Remote data repository credentials not found.")
-        
+
         accelerator_job_service = AcceleratorJobProjectService(
-            user_token, 
+            user_token,
             server_url=server_url,
             verify_cert=(not ACCLI_DEBUG)
         )
@@ -767,7 +766,7 @@ class Fs:
         return accelerator_job_service.get_file_url_from_repo(
             remote_filepath
         )
-        
+
 
     @staticmethod
     def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):
@@ -799,9 +798,9 @@ class Fs:
 
         if not (user_token and server_url):
             raise ValueError("Remote data repository credentials not found.")
-        
+
         accelerator_job_service = AcceleratorJobProjectService(
-            user_token, 
+            user_token,
             server_url=server_url,
             verify_cert=(not ACCLI_DEBUG)
         )
