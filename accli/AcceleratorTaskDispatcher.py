@@ -7,7 +7,6 @@ import shutil
 import tempfile
 import requests
 from functools import lru_cache
-from typing import override
 from pydantic import BaseModel, model_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
@@ -136,7 +135,6 @@ class JobDispatchModel(BaseModel):
     children: list['JobDispatchModel'] = []
     callback: 'JobDispatchModel | None' = None
 
-    @override
     def model_dump(self, *args, **kwargs):
         result = super().model_dump(*args, **kwargs)
         if result['is_holder_job'] and result['execute_cluster'] == 'WKUBE':
@@ -185,7 +183,6 @@ class WKubeTaskKwargs(BaseModel):
 
     build_timeout: int | None = None
 
-    @override
     def model_dump(self, *args, **kwargs):
         result = super().model_dump(*args, **kwargs)
         if 'job_folder' in result:
