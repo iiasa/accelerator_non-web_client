@@ -239,7 +239,7 @@ class AcceleratorTerminalCliProjectService:
         )
 
     def read_part_data(self, stream, size, part_data=b"", progress=None):
-        """Read part data of given size from stream."""
+        """Read part data of the given size from the stream."""
         size -= len(part_data)
         while size:
             data = stream.read(size)
@@ -306,7 +306,7 @@ class AcceleratorTerminalCliProjectService:
                     )
 
                     # If part_data_size is less or equal to part_size,
-                    # then we have reached last part.
+                    # then we have reached the last part.
                     if len(part_data) <= part_size:
                         part_count = part_number
                         stop = True
