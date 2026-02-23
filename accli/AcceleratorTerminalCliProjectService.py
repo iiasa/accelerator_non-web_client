@@ -46,7 +46,7 @@ class AcceleratorTerminalCliProjectService:
             self.http_client = http_client_wo_cert_verification
 
         self.server_url = server_url
-        self.cli_base_url = f"{self.server_url}/v1/aterm-cli"
+        self.cli_base_url = f"{self.server_url}/api/v1/aterm-cli"
         self.common_request_headers = {
             'x-authorization': user_token
         }
@@ -149,7 +149,7 @@ class AcceleratorTerminalCliProjectService:
         try:
             res = self.http_client_request(
                 "GET",
-                f"{self.server_url}/v1/projects/{project_slug}/dataset-templates/{template_slug}/by-slug/",
+                f"{self.server_url}/api/v1/projects/{project_slug}/dataset-templates/{template_slug}/by-slug/",
             )
         except AccAPIError as err:
             if err.status_code == 404:

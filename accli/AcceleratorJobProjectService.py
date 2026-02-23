@@ -47,7 +47,7 @@ class AcceleratorJobProjectService:
         else:
             self.http_client = http_client_wo_cert_verification
 
-        self.cli_base_url = f"{server_url}/v1/ajob-cli"
+        self.cli_base_url = f"{server_url}/api/v1/ajob-cli"
         self.common_request_headers = {
             'x-authorization': user_token
         }

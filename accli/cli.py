@@ -75,7 +75,7 @@ def login(
     device_authorization_code = typer.prompt("Enter the authorization code?")
 
     token_response = requests.post(
-        f"{server}/v1/oauth/device/token/",
+        f"{server}/api/v1/oauth/device/token/",
         json={"device_authorization_code": device_authorization_code},
         verify=(not ACCLI_DEBUG)
     )
