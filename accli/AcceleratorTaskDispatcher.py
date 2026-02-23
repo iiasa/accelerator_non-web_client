@@ -253,7 +253,7 @@ class WKubeTask(GenericTask):
         wkube_task_meta = dict()
 
         name = t_kwargs.pop('name') if 'name' in t_kwargs else None
-        if (t_args or t_kwargs):
+        if t_args or t_kwargs:
             WKubeTaskPydantic(*t_args, **t_kwargs)
             wkube_task_kwargs = WKubeTaskKwargs(*t_args, **t_kwargs)
             wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).dict(exclude_unset=True))
