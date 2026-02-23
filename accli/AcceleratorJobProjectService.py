@@ -1,6 +1,5 @@
 import os
 import io
-import typing
 import requests
 import json
 import base64
@@ -757,7 +756,7 @@ class Fs:
         )
 
     @staticmethod
-    def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):
+    def write_file(source: str | io.BytesIO, dest_filepath):
         user_token = os.environ.get("ACC_JOB_TOKEN", None)
         server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 
