@@ -3,11 +3,10 @@ import zipfile
 import hashlib
 import shutil
 import tempfile
-from typing import Dict
-
 import requests
 from functools import lru_cache
-from pydantic.v1 import BaseModel, root_validator
+from typing import override
+from pydantic import BaseModel, model_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
     get_token, get_server_url,
@@ -66,9 +65,7 @@ def copy_tree(src, dst):
 @lru_cache(maxsize=None)
 def push_folder_job(directory):
     access_token = get_token()
-
     server_url = get_server_url()
-
     project_slug = get_project_slug()
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
@@ -78,20 +75,16 @@ def push_folder_job(directory):
     )
 
     repo_dir = tempfile.mkdtemp()
-
     copy_tree(directory, repo_dir)
 
     if os.path.isfile(f'{repo_dir}/wkube.py'):
         os.remove(f'{repo_dir}/wkube.py')
 
     temp_zip_path = f"{repo_dir}/temp.zip"
-
     compress_folder(repo_dir, temp_zip_path)
 
     sha256_hash = get_file_sha1(temp_zip_path)
-
     final_zip_path = f"{repo_dir}/{sha256_hash}.zip"
-
     os.rename(temp_zip_path, final_zip_path)
 
     presigned_push_url = term_cli_project_service.get_jobstore_push_url(
@@ -99,7 +92,7 @@ def push_folder_job(directory):
     )
 
     if presigned_push_url:
-        with  open(final_zip_path, 'rb') as f:
+        with open(final_zip_path, 'rb') as f:
             res = requests.put(
                 presigned_push_url,
                 data=f,
@@ -108,7 +101,6 @@ def push_folder_job(directory):
             res.raise_for_status()
 
     shutil.rmtree(repo_dir)
-
     return f"s3accjobstore://{sha256_hash}.zip", sha256_hash
 
 
@@ -121,7 +113,7 @@ class JobDispatchModel(BaseModel):
     execute_cluster: str
     job_location: str
     job_args: list
-    job_kwargs: Dict
+    job_kwargs: dict
 
     required_cores: float | None = None
     required_ram: float | None = None
@@ -142,8 +134,9 @@ class JobDispatchModel(BaseModel):
     children: list['JobDispatchModel'] = []
     callback: 'JobDispatchModel | None' = None
 
-    def dict(self, *args, **kwargs):
-        result = super().dict(*args, **kwargs)
+    @override
+    def model_dump(self, *args, **kwargs):
+        result = super().model_dump(*args, **kwargs)
         if result['is_holder_job'] and result['execute_cluster'] == 'WKUBE':
             if len(result['children']) > 1:
                 if not result['children'][0]['job_kwargs'].get('docker_image'):
@@ -186,20 +179,21 @@ class WKubeTaskKwargs(BaseModel):
 
     command: str  # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.
 
-    conf: Dict[str, str] = {}
+    conf: dict[str, str] = {}
 
     build_timeout: int | None = None
 
-    def dict(self, *args, **kwargs):
-        result = super().dict(*args, **kwargs)
+    @override
+    def model_dump(self, *args, **kwargs):
+        result = super().model_dump(*args, **kwargs)
         if 'job_folder' in result:
             del result['job_folder']
         return result
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_root(cls, values):
         if not values.get('docker_image'):
-
             job_folder = values.get('job_folder', './')
 
             if not (values.get('repo_url') and values.get('repo_branch')):
@@ -236,27 +230,26 @@ class GenericTask:
         self.dispatch_model_task.children.append(task.dispatch_model_task)
 
     def add_callback(self, task):
-
         if self.__class__ != task.__class__:
             raise ValueError(f"task should of {self.__class__} class")
         self.dispatch_model_task.callback = task.dispatch_model_task
 
     @property
     def description(self):
-        return self.dispatch_model_task.dict()
+        return self.dispatch_model_task.model_dump()
 
 
 class WKubeTask(GenericTask):
     def __init__(self, *t_args, **t_kwargs):
         super().__init__(*t_args, **t_kwargs)
         wkube_task_kwargs = None
-        wkube_task_meta = dict()
+        wkube_task_meta = {}
 
         name = t_kwargs.pop('name') if 'name' in t_kwargs else None
         if t_args or t_kwargs:
             WKubeTaskPydantic(*t_args, **t_kwargs)
             wkube_task_kwargs = WKubeTaskKwargs(*t_args, **t_kwargs)
-            wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).dict(exclude_unset=True))
+            wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).model_dump(exclude_unset=True))
 
         self.dispatch_model_task = JobDispatchModel(
             name=name,
@@ -264,6 +257,6 @@ class WKubeTask(GenericTask):
             execute_cluster='WKUBE',
             job_location='acc_native_jobs.dispatch_wkube_task',
             job_args=[],
-            job_kwargs=wkube_task_kwargs.dict(exclude_unset=True) if wkube_task_kwargs else dict(),
+            job_kwargs=wkube_task_kwargs.model_dump(exclude_unset=True) if wkube_task_kwargs else {},
             **wkube_task_meta
         )
