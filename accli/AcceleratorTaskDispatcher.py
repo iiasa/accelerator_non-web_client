@@ -29,7 +29,7 @@ def compress_folder(folder_path, output_path):
             for file in files:
                 file_path = os.path.join(root, file)
                 arcname = os.path.relpath(file_path, start=folder_path)
-                # Add file to zip with fixed timestamp
+                # Add a file to zip with a fixed timestamp
                 info = zipfile.ZipInfo(arcname)
                 info.date_time = fixed_time
                 info.external_attr = 0o600 << 16  # Set file permissions
@@ -126,7 +126,7 @@ class JobDispatchModel(BaseModel):
     required_ram: Optional[float]
     required_storage_local: Optional[float]
 
-    # is ignored if it is a callback and child of non free node jobs
+    # is ignored if it is a callback and child of non-free node jobs
     required_storage_workflow: Optional[float]
 
     job_secrets: Optional[dict] = {}
@@ -162,7 +162,7 @@ class WKubeTaskMeta(BaseModel):
     required_ram: float
     required_storage_local: float
 
-    # is ignored if it is a callback and child of non free node jobs
+    # is ignored if it is a callback and child of non-free node jobs
     required_storage_workflow: float
 
     job_secrets: Optional[dict] = {}
