@@ -63,7 +63,7 @@ def copy_tree(src, dst):
 
 
 @lru_cache(maxsize=None)
-def push_folder_job(dir):
+def push_folder_job(directory):
     access_token = get_token()
 
     server_url = get_server_url()
@@ -78,7 +78,7 @@ def push_folder_job(dir):
 
     repo_dir = tempfile.mkdtemp()
 
-    copy_tree(dir, repo_dir)
+    copy_tree(directory, repo_dir)
 
     if os.path.isfile(f'{repo_dir}/wkube.py'):
         os.remove(f'{repo_dir}/wkube.py')
