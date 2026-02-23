@@ -7,4 +7,3 @@ from accli.AcceleratorTaskDispatcher import *
 from accli.AcceleratorJobProjectService import AcceleratorJobProjectService, Fs
 
 AjobCliService = AcceleratorJobProjectService
-

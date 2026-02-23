@@ -9,14 +9,15 @@ from accli.common import todict
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
 
+
 class AccAPIError(Exception):
 
-    def __init__(self, message, response, status_code):            
-            
-            super().__init__(message)
-                
-            self.response = response
-            self.status_code = status_code
+    def __init__(self, message, response, status_code):
+        super().__init__(message)
+
+        self.response = response
+        self.status_code = status_code
+
 
 retries = urllib3.util.Retry(total=10, backoff_factor=1)
 
@@ -28,14 +29,15 @@ http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
     cert_reqs="CERT_NONE", num_pools=20, retries=retries, maxsize=2000, block=True
 )
 
+
 class AcceleratorTerminalCliProjectService:
     def __init__(
             self,
-            user_token, 
+            user_token,
             server_url,
             verify_cert=(not ACCLI_DEBUG)
-        ):
-        
+    ):
+
         self.user_token = user_token
 
         if verify_cert:
@@ -67,18 +69,18 @@ class AcceleratorTerminalCliProjectService:
 
         if str(res.status)[0] in ['4', '5']:
             raise AccAPIError(
-                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}", 
-                status_code=res.status, 
+                f"Accelerator api error:: status_code={res.status} :: response_data={res.data}",
+                status_code=res.status,
                 response=res
             )
-        
+
         return res
 
     def get_file_stat(self, project_slug, filename):
-        
+
         try:
             res = self.http_client_request(
-                "POST", 
+                "POST",
                 f"{self.cli_base_url}/{project_slug}/file-stat/",
                 json=dict(filename=filename),
                 headers=self.common_request_headers
@@ -90,32 +92,32 @@ class AcceleratorTerminalCliProjectService:
                 raise err
 
         return todict(res.data)
-    
+
     def get_file_url_from_repo(self, filename, token_pass=""):
         project_slug = filename.split('/')[0]
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/get-file-download-url/?filename={filename}&token_pass={token_pass}",
             headers=self.common_request_headers
         )
         if res.data:
             return todict(res.data)
-    
+
     def get_github_app_token(self, project_slug):
-        
+
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/github-app-token/",
             headers=self.common_request_headers
         )
 
         return todict(res.data)
-    
+
     def get_jobstore_push_url(self, project_slug, filename):
         try:
-        
+
             res = self.http_client_request(
-                "GET", 
+                "GET",
                 f"{self.cli_base_url}/{project_slug}/jobstore-push-url/?filename={filename}",
                 headers=self.common_request_headers
             )
@@ -126,28 +128,27 @@ class AcceleratorTerminalCliProjectService:
             else:
                 raise err
 
-
         return todict(res.data)
-    
+
     def dispatch(self, project_slug, job_description):
-        
+
         try:
             res = self.http_client_request(
-                "POST", 
+                "POST",
                 f"{self.cli_base_url}/{project_slug}/jobs/dispatch/",
                 json=job_description,
                 headers=self.common_request_headers
             )
         except AccAPIError as err:
-                raise err
+            raise err
 
         return todict(res.data)['job_id']
-    
+
     def get_dataset_template_details(self, project_slug, template_slug):
-        
+
         try:
             res = self.http_client_request(
-                "GET", 
+                "GET",
                 f"{self.server_url}/v1/projects/{project_slug}/dataset-templates/{template_slug}/by-slug/",
             )
         except AccAPIError as err:
@@ -158,17 +159,16 @@ class AcceleratorTerminalCliProjectService:
 
         return todict(res.data)
 
-    
     def get_multipart_put_create_signed_url(
-        self,
-        project_slug,
-        app_bucket_id,
-        object_name,
-        upload_id,
-        part_number
+            self,
+            project_slug,
+            app_bucket_id,
+            object_name,
+            upload_id,
+            part_number
     ):
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/put-multipart-signed-url",
             fields=dict(
                 app_bucket_id=app_bucket_id,
@@ -181,14 +181,12 @@ class AcceleratorTerminalCliProjectService:
 
         return todict(res.data)
 
-    
-
     def get_put_create_multipart_upload_id(self, project_slug, filename):
-        
+
         b64_filename = base64.b64encode(filename.encode()).decode()
 
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/create-multipart-upload-id/{b64_filename}",
             headers=self.common_request_headers
         )
@@ -197,21 +195,20 @@ class AcceleratorTerminalCliProjectService:
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
-
     def complete_create_multipart_upload(
-        self,
-        project_slug,
-        app_bucket_id,
-        filename,
-        upload_id,
-        parts: list[tuple[str, str]]
+            self,
+            project_slug,
+            app_bucket_id,
+            filename,
+            upload_id,
+            parts: list[tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/{project_slug}/complete-create-multipart-upload",
             json=dict(
                 app_bucket_id=app_bucket_id,
@@ -224,15 +221,14 @@ class AcceleratorTerminalCliProjectService:
 
         return todict(res.data)
 
-    
     def abort_create_multipart_upload(self, project_slug, app_bucket_id, filename, upload_id):
-        
+
         headers = {"Content-Type": "application/json"}
 
         headers.update(self.common_request_headers)
 
         res = self.http_client_request(
-            "PUT", 
+            "PUT",
             f"{self.cli_base_url}/{project_slug}/abort-create-multipart-upload",
             json=dict(
                 app_bucket_id=app_bucket_id,
@@ -241,8 +237,6 @@ class AcceleratorTerminalCliProjectService:
             ),
             headers=headers
         )
-
-    
 
     def read_part_data(self, stream, size, part_data=b"", progress=None):
         """Read part data of given size from stream."""
@@ -258,14 +252,14 @@ class AcceleratorTerminalCliProjectService:
             if progress:
                 progress.update(len(data))
         return part_data
-    
 
-    def put_part(self, project_slug, app_bucket_id, uniqified_filename, upload_id, part_number, part_data, progress, task):
+    def put_part(self, project_slug, app_bucket_id, uniqified_filename, upload_id, part_number, part_data, progress,
+                 task):
 
         put_presigned_url = self.get_multipart_put_create_signed_url(
-                        project_slug, app_bucket_id, uniqified_filename, upload_id, part_number
-                    )
-        
+            project_slug, app_bucket_id, uniqified_filename, upload_id, part_number
+        )
+
         part_upload_response = requests.put(
             put_presigned_url,
             data=part_data,
@@ -278,12 +272,12 @@ class AcceleratorTerminalCliProjectService:
         etag = part_upload_response.headers.get("etag").replace('"', "")
         return part_number, etag
 
-
-    def upload_filestream_to_accelerator(self, project_slug, filename, file_stream, progress, task, max_workers=os.cpu_count()):
+    def upload_filestream_to_accelerator(self, project_slug, filename, file_stream, progress, task,
+                                         max_workers=os.cpu_count()):
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 200 * 1024**2, -1
+        part_size, part_count = 200 * 1024 ** 2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -329,21 +323,20 @@ class AcceleratorTerminalCliProjectService:
                             uniqified_filename,
                         ) = self.get_put_create_multipart_upload_id(
                             project_slug,
-                            filename, 
+                            filename,
                             # headers=headers
                         )
 
-                        
-                    future = executor.submit(self.put_part, project_slug, app_bucket_id, uniqified_filename, upload_id, part_number, part_data, progress, task)
+                    future = executor.submit(self.put_part, project_slug, app_bucket_id, uniqified_filename, upload_id,
+                                             part_number, part_data, progress, task)
 
                     futures.append(future)
-            
+
             futures_results = concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
             parts = [f.result() for f in futures_results.done]
 
             parts.sort(key=lambda x: x[0])
-
 
             created_bucket_object_id = self.complete_create_multipart_upload(
                 project_slug, app_bucket_id, uniqified_filename, upload_id, parts
@@ -361,7 +354,6 @@ class AcceleratorTerminalCliProjectService:
                 )
 
             raise err
-    
 
     def enumerate_files_by_prefix(self, prefix, token_pass=""):
         project_slug = prefix.split('/')[0]
@@ -369,7 +361,7 @@ class AcceleratorTerminalCliProjectService:
         b64_encoded_prefix = base64.b64encode(prefix.encode()).decode()
 
         res = self.http_client_request(
-            "GET", 
+            "GET",
             f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}/?token_pass={token_pass}",
             headers=self.common_request_headers
         )
