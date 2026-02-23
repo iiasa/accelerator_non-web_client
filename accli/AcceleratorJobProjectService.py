@@ -1,6 +1,5 @@
 import os
 import io
-import sys
 import typing
 import requests
 import json
@@ -12,6 +11,7 @@ from pathlib import Path
 from accli.common import todict
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+
 
 class AccAPIError(Exception):
     pass
@@ -32,13 +32,14 @@ http_client_wo_cert_verification = urllib3.poolmanager.PoolManager(
     cert_reqs="CERT_NONE", num_pools=20, retries=retries, maxsize=2000, block=True
 )
 
+
 class AcceleratorJobProjectService:
     def __init__(
             self,
             user_token,
             server_url='http://accelerator.iiasa.ac.at',
             verify_cert=(not ACCLI_DEBUG)
-        ):
+    ):
 
         self.user_token = user_token
 
@@ -82,12 +83,10 @@ class AcceleratorJobProjectService:
         )
         return todict(res.data)
 
-
     def enumerate_files_by_prefix(self, prefix):
         raise NotImplementedError("filename parameter is not implemented yet")
 
         project_slug = filename.split('/')[0]
-
 
         b64_encoded_prefix = base64.b64encode(prefix.encode()).decode()
 
@@ -98,7 +97,6 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
-
 
     def get_file_url_from_repo(self, filename):
         project_slug = filename.split('/')[0]
@@ -121,7 +119,6 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
-
 
     def get_filename_dataset_type(self, filename):
         res = self.http_client_request(
@@ -150,7 +147,6 @@ class AcceleratorJobProjectService:
         if res.data:
             return todict(res.data)
 
-
     def get_file_url(self, bucket_object_id):
         res = self.http_client_request(
             "GET",
@@ -160,7 +156,6 @@ class AcceleratorJobProjectService:
 
         if res.data:
             return todict(res.data)
-
 
     def get_file_stream(self, bucket_object_id):
         url = self.get_file_url(bucket_object_id)
@@ -207,7 +202,6 @@ class AcceleratorJobProjectService:
             verify=False,
         )
 
-
         self.http_client_request(
             "POST",
             f"{self.cli_base_url}/register-log-file/",
@@ -220,13 +214,12 @@ class AcceleratorJobProjectService:
 
         return is_healthy
 
-
     def get_multipart_put_create_signed_url(
-        self,
-        app_bucket_id,
-        object_name,
-        upload_id,
-        part_number
+            self,
+            app_bucket_id,
+            object_name,
+            upload_id,
+            part_number
     ):
         res = self.http_client_request(
             "GET",
@@ -243,10 +236,10 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def get_multipart_put_update_signed_url(
-        self,
-        filename,
-        upload_id,
-        part_number,
+            self,
+            filename,
+            upload_id,
+            part_number,
     ):
         res = self.http_client_request(
             "GET",
@@ -273,7 +266,6 @@ class AcceleratorJobProjectService:
 
         return data['upload_id'], data['app_bucket_id'], data['uniqified_filename']
 
-
     def get_validator_create_multipart_upload_id(self, filename):
         encoded_filename = quote(filename)
         res = self.http_client_request(
@@ -297,12 +289,12 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def complete_job_multipart_upload(
-        self,
-        app_bucket_id,
-        filename,
-        upload_id,
-        parts: list[tuple[str, str]],
-        is_log_file=False
+            self,
+            app_bucket_id,
+            filename,
+            upload_id,
+            parts: list[tuple[str, str]],
+            is_log_file=False
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -323,13 +315,12 @@ class AcceleratorJobProjectService:
 
         return todict(res.data)
 
-
     def complete_validator_multipart_upload(
-        self,
-        app_bucket_id,
-        filename,
-        upload_id,
-        parts: list[tuple[str, str]]
+            self,
+            app_bucket_id,
+            filename,
+            upload_id,
+            parts: list[tuple[str, str]]
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -350,7 +341,7 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def complete_update_multipart_upload(
-        self, filename, upload_id, parts: list[tuple[str, str]]
+            self, filename, upload_id, parts: list[tuple[str, str]]
     ):
 
         headers = {"Content-Type": "application/json"}
@@ -425,11 +416,11 @@ class AcceleratorJobProjectService:
     #     )
 
     def register_validation(
-        self,
-        validated_bucket_object_id: int,
-        dataset_template_id: int,
-        validated_metadata: dict,
-        validation_supporting_bucket_object_ids: list[int]
+            self,
+            validated_bucket_object_id: int,
+            dataset_template_id: int,
+            validated_metadata: dict,
+            validation_supporting_bucket_object_ids: list[int]
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -448,8 +439,8 @@ class AcceleratorJobProjectService:
         )
 
     def get_dataset_template_details(
-        self,
-        dataset_template_id
+            self,
+            dataset_template_id
     ):
         headers = {"Content-Type": "application/json"}
 
@@ -462,8 +453,6 @@ class AcceleratorJobProjectService:
         )
 
         return todict(res.data)
-
-
 
     def read_part_data(self, stream, size, part_data=b"", progress=None):
         """Read part data of given size from stream."""
@@ -484,7 +473,7 @@ class AcceleratorJobProjectService:
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 50 * 1024**2, -1
+        part_size, part_count = 50 * 1024 ** 2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -561,7 +550,7 @@ class AcceleratorJobProjectService:
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 50 * 1024**2, -1
+        part_size, part_count = 50 * 1024 ** 2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -631,12 +620,11 @@ class AcceleratorJobProjectService:
 
             raise err
 
-
     def add_filestream_as_validation_supporter(self, filename, file_stream, is_log_file=False):
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 50 * 1024**2, -1
+        part_size, part_count = 50 * 1024 ** 2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -729,6 +717,7 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
+
 class Fs:
     @staticmethod
     def write_stream_remote(filestream, dest_filepath, user_token, server_url):
@@ -766,7 +755,6 @@ class Fs:
         return accelerator_job_service.get_file_url_from_repo(
             remote_filepath
         )
-
 
     @staticmethod
     def write_file(source: typing.Union[str, io.BytesIO], dest_filepath):
