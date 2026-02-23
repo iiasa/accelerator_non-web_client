@@ -1,19 +1,19 @@
 import os
-from tinydb import TinyDB, Query
+
+from tinydb import TinyDB
+
 
 def get_db_path():
-
     home = os.path.expanduser("~")
     token_directory = f"{home}/.accli"
 
     if not os.path.exists(token_directory):
         os.makedirs(token_directory)
-    
+
     return f"{token_directory}/data.json"
 
 
 def save_token_details(token, server_url, webcli_url):
-
     db_path = get_db_path()
 
     try:
@@ -27,6 +27,7 @@ def save_token_details(token, server_url, webcli_url):
         'server_url': server_url,
         'webcli_url': webcli_url
     })
+
 
 def get_token():
     db_path = get_db_path()
@@ -42,6 +43,7 @@ def get_token():
         print("Token does not exists. Please login.")
     return token
 
+
 def get_github_app_token():
     db_path = get_db_path()
 
@@ -56,15 +58,18 @@ def get_github_app_token():
         print("Github app token does not exists.")
     return token
 
+
 def set_github_app_token(github_app_token):
     db_path = get_db_path()
     db = TinyDB(db_path)
     db.update({'github_app_token': github_app_token}, doc_ids=[1])
 
+
 def set_project_slug(project_slug):
     db_path = get_db_path()
     db = TinyDB(db_path)
     db.update({'project_slug': project_slug}, doc_ids=[1])
+
 
 def get_project_slug():
     db_path = get_db_path()

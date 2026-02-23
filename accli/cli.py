@@ -1,32 +1,31 @@
-import re
-import click
 import glob
-import os
-import typer
-from pathlib import Path
-import requests
-import warnings
 import importlib.util
-from rich import print
-from typing_extensions import Annotated
+import os
+import re
+import warnings
 from contextlib import contextmanager
+from pathlib import Path
 
-from accli.token import save_token_details, get_token, get_server_url, set_github_app_token, set_project_slug
-
-from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
-from ._version import VERSION
+import requests
+import typer
+from typing import List
 
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
+from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
+from accli.token import save_token_details, get_token, get_server_url, set_project_slug
+from rich import print
+from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+from typing_extensions import Annotated
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, ProgressColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
+from ._version import VERSION
 
 warnings.filterwarnings('ignore')
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
 
 app = typer.Typer(
-    add_completion=False, 
-    pretty_exceptions_show_locals=False, 
+    add_completion=False,
+    pretty_exceptions_show_locals=False,
     no_args_is_help=True
 )
 
@@ -35,7 +34,6 @@ def get_size(path):
     size = 0
 
     for file in glob.iglob(f"{path}/**/*.*", recursive=True):
-        
         size += os.path.getsize(file)
 
     return size
@@ -54,16 +52,20 @@ def pushd(new_dir):
 
 @app.command()
 def about():
-    print("[bold cyan]This is a terminal client for Accelerator hosted on https://accelerator.iiasa.ac.at . [/bold cyan]\n")
-    print("[bold cyan]Please file feature requests and suggestions at https://github.com/iiasa/accli/issues .[/bold cyan]\n")
+    print(
+        "[bold cyan]This is a terminal client for Accelerator hosted on https://accelerator.iiasa.ac.at . [/bold cyan]\n")
+    print(
+        "[bold cyan]Please file feature requests and suggestions at https://github.com/iiasa/accli/issues .[/bold cyan]\n")
     print("[bold cyan]License: The MIT License (MIT)[/bold cyan]\n")
     print(f"[bold cyan]Version: {VERSION}[/bold cyan]\n")
 
 
 @app.command()
 def login(
-    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at", 
-    webcli: Annotated[str, typer.Option(..., '-c', help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
+        server: Annotated[
+            str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
+        webcli: Annotated[str, typer.Option(..., '-c',
+                                            help="Accelerator web client for authorization.")] = "https://accelerator.iiasa.ac.at"
 ):
     print(
         f"[bold cyan]Welcome to Accelerator Terminal Client.[/bold cyan]\n"
@@ -75,7 +77,7 @@ def login(
     device_authorization_code = typer.prompt("Enter the authorization code?")
 
     token_response = requests.post(
-        f"{server}/v1/oauth/device/token/", 
+        f"{server}/api/v1/oauth/device/token/",
         json={"device_authorization_code": device_authorization_code},
         verify=(not ACCLI_DEBUG)
     )
@@ -90,8 +92,9 @@ def login(
 
     print("[bold green]Successfully logged in.[/bold green]:rocket: :rocket:")
 
-def upload_file(project_slug, accelerator_filename, local_filepath, progress, task, folder_name, max_workers=os.cpu_count()):
 
+def upload_file(project_slug, accelerator_filename, local_filepath, progress, task, folder_name,
+                max_workers=os.cpu_count()):
     access_token = get_token()
 
     server_url = get_server_url()
@@ -109,36 +112,38 @@ def upload_file(project_slug, accelerator_filename, local_filepath, progress, ta
     else:
 
         with open(local_filepath, 'rb') as file_stream:
-            term_cli_project_service.upload_filestream_to_accelerator(project_slug, f"{folder_name}/{accelerator_filename}", file_stream, progress, task, max_workers=max_workers)
+            term_cli_project_service.upload_filestream_to_accelerator(project_slug,
+                                                                      f"{folder_name}/{accelerator_filename}",
+                                                                      file_stream, progress, task,
+                                                                      max_workers=max_workers)
+
 
 @app.command()
 def upload(
-    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-    path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator project space.")],
-    folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
-    max_workers: Annotated[int, typer.Option(..., '-w',help="Maximum worker pool for multipart upload.")] = os.cpu_count()
+        project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+        path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator project space.")],
+        folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
+        max_workers: Annotated[
+            int, typer.Option(..., '-w', help="Maximum worker pool for multipart upload.")] = os.cpu_count()
 ):
+    # TODO make user free to put anywere except for reserved folder
 
-
-    #TODO make user free to put anywere except for reserved folder
-    
-    if not re.fullmatch(r'[a-zA-Z0-9\-\_]+', folder_name):
+    if not re.fullmatch(r'[a-zA-Z0-9\-_]+', folder_name):
         raise ValueError("Folder name is invalid.")
 
-
     with Progress(
-        TextColumn("[progress.description]"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TextColumn("{task.description}"),
-        transient=True
+            TextColumn("[progress.description]"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TextColumn("{task.description}"),
+            transient=True
     ) as progress:
-    
-        if (os.path.isdir(path)):
+
+        if os.path.isdir(path):
 
             if not path.endswith("/"):
-                path = path + ("/")
+                path = path + "/"
 
             folder_size = get_size(path)
             print('Folder size', folder_size)
@@ -151,29 +156,29 @@ def upload(
                     accelerator_filename = accelerator_filename.replace('\\', '/')
 
                 progress.update(
-                    upload_task, 
+                    upload_task,
                     description=f"[cyan]Uploading {local_file_path} \t"
                 )
 
-                
                 if not os.path.isfile(local_file_path):
                     continue
-                upload_file(project_slug, accelerator_filename, local_file_path,  progress, upload_task, folder_name, max_workers=max_workers)
-        elif (os.path.isfile(path)):
+                upload_file(project_slug, accelerator_filename, local_file_path, progress, upload_task, folder_name,
+                            max_workers=max_workers)
+        elif os.path.isfile(path):
             raise NotImplementedError('Only folder can be uploaded. File upload is not implemented.')
         else:
             print("ERROR: No such file or directory.")
             typer.Exit(1)
 
+
 @app.command()
 def validate(
-    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-    template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
-    filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
-    server: Annotated[str, typer.Option(..., '-s',help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
+        project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+        template_slug: Annotated[str, typer.Argument(help="Unique project template slug")],
+        filepath: Annotated[str, typer.Argument(help="Path of the file to validate")],
+        server: Annotated[
+            str, typer.Option(..., '-s', help="Accelerator server url.")] = "https://accelerator.iiasa.ac.at",
 ):
-    
-
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token="",
         server_url=server,
@@ -189,11 +194,12 @@ def validate(
 
     validate()
 
+
 @app.command()
 def dispatch(
-    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-    root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-    workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
+        project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
+        root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
+        workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
     access_token = get_token()
@@ -237,11 +243,12 @@ def dispatch(
 
     print(f"Dispatched root job #ID: {root_job_id}")
 
+
 @app.command()
 def copy(
-    acc_src: Annotated[str, typer.Argument(help="Source path in Accelerator project space")],
-    destination: Annotated[str, typer.Option(..., "-d", help="Destination directory")] = "./",
-    token_pass: Annotated[str, typer.Option(..., "-t", help="Destination directory")] = "",
+        acc_src: Annotated[str, typer.Argument(help="Source path in Accelerator project space")],
+        destination: Annotated[str, typer.Option(..., "-d", help="Destination directory")] = "./",
+        token_pass: Annotated[str, typer.Option(..., "-t", help="Destination directory")] = "",
 ):
     access_token = get_token()
     server_url = get_server_url()
@@ -255,14 +262,14 @@ def copy(
     dest_path = Path(destination).expanduser().resolve()
     dest_path.mkdir(parents=True, exist_ok=True)
 
-    filenames: list[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
+    filenames: List[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
 
     with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        transient=True,
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            transient=True,
     ) as progress:
 
         for filename in filenames:

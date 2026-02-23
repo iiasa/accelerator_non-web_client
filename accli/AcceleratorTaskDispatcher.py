@@ -3,13 +3,14 @@ import zipfile
 import hashlib
 import shutil
 import tempfile
+from typing import Optional, Dict, List
+
 import requests
 from functools import lru_cache
-from typing import Optional, List, Dict
-from pydantic.v1 import BaseModel, root_validator
+from pydantic import BaseModel, model_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
-    get_token, get_server_url, 
+    get_token, get_server_url,
     get_project_slug
 )
 
@@ -28,14 +29,14 @@ def compress_folder(folder_path, output_path):
             files.sort()
             for file in files:
                 file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, start=folder_path)
-                # Add file to zip with fixed timestamp
-                info = zipfile.ZipInfo(arcname)
+                arc_name = os.path.relpath(file_path, start=folder_path)
+                # Add a file to zip with a fixed timestamp
+                info = zipfile.ZipInfo(arc_name)
                 info.date_time = fixed_time
                 info.external_attr = 0o600 << 16  # Set file permissions
                 with open(file_path, 'rb') as f:
-                    
                     zipf.writestr(info, f.read(), zipfile.ZIP_DEFLATED)
+
 
 def get_file_sha1(file_path):
     sha1_hash = hashlib.sha1()
@@ -52,7 +53,7 @@ def copy_tree(src, dst):
     for item in os.listdir(src):
         src_path = os.path.join(src, item)
         dst_path = os.path.join(dst, item)
-        
+
         if os.path.isdir(src_path):
             if item == '.git':
                 continue
@@ -61,13 +62,11 @@ def copy_tree(src, dst):
         else:
             shutil.copy2(src_path, dst_path)
 
+
 @lru_cache(maxsize=None)
-def push_folder_job(dir):
-
+def push_folder_job(directory):
     access_token = get_token()
-
     server_url = get_server_url()
-
     project_slug = get_project_slug()
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
@@ -77,40 +76,32 @@ def push_folder_job(dir):
     )
 
     repo_dir = tempfile.mkdtemp()
-
-    copy_tree(dir, repo_dir)
+    copy_tree(directory, repo_dir)
 
     if os.path.isfile(f'{repo_dir}/wkube.py'):
         os.remove(f'{repo_dir}/wkube.py')
 
     temp_zip_path = f"{repo_dir}/temp.zip"
-
     compress_folder(repo_dir, temp_zip_path)
-    
+
     sha256_hash = get_file_sha1(temp_zip_path)
-
     final_zip_path = f"{repo_dir}/{sha256_hash}.zip"
-
-    
     os.rename(temp_zip_path, final_zip_path)
 
     presigned_push_url = term_cli_project_service.get_jobstore_push_url(
         project_slug, f"{sha256_hash}.zip"
     )
 
-
     if presigned_push_url:
-        with  open(final_zip_path, 'rb') as f:
+        with open(final_zip_path, 'rb') as f:
             res = requests.put(
                 presigned_push_url,
                 data=f,
                 verify=False,
             )
             res.raise_for_status()
-    
-    
-    shutil.rmtree(repo_dir)
 
+    shutil.rmtree(repo_dir)
     return f"s3accjobstore://{sha256_hash}.zip", sha256_hash
 
 
@@ -119,40 +110,38 @@ class JobDispatchModel(BaseModel):
     build_only_task: bool = False
 
     name: str
-    
+
     execute_cluster: str
     job_location: str
-    job_args: List
-    job_kwargs: Dict
+    job_args: list
+    job_kwargs: dict
 
-    required_cores: Optional[float]
-    required_ram: Optional[float]
-    required_storage_local: Optional[float]  
-    
-    # is ignored if it is a callback and child of non free node jobs
-    required_storage_workflow: Optional[float]
+    required_cores: Optional[float] = None
+    required_ram: Optional[float] = None
+    required_storage_local: Optional[float] = None
 
-    job_secrets: Optional[dict] = {}     
-    
-    timeout: Optional[int]
-    pvc_id: Optional[str]
-    node_id: Optional[str]
+    # is ignored if it is a callback and child of non-free node jobs
+    required_storage_workflow: Optional[float] = None
+
+    job_secrets: Optional[dict] = {}
+
+    timeout: Optional[int] = None
+    pvc_id: Optional[str] = None
+    node_id: Optional[str] = None
 
     ignore_duplicate_job: bool = False
-    free_node: bool = False             # Only applies to immediate children jobs
+    free_node: bool = False  # Only applies to immediate children jobs
 
-    
-    
     children: List['JobDispatchModel'] = []
-    callback: Optional['JobDispatchModel']
+    callback: Optional['JobDispatchModel'] = None
 
-    def dict(self, *args, **kwargs):
-        result = super().dict(*args, **kwargs)
+    def model_dump(self, *args, **kwargs):
+        result = super().model_dump(*args, **kwargs)
         if result['is_holder_job'] and result['execute_cluster'] == 'WKUBE':
             if len(result['children']) > 1:
                 if not result['children'][0]['job_kwargs'].get('docker_image'):
                     builder_task = result['children'][0].copy()
-                    
+
                     builder_task['build_only_task'] = True
 
                     builder_task['callback'] = result.copy()
@@ -165,102 +154,101 @@ class JobDispatchModel(BaseModel):
 class WKubeTaskMeta(BaseModel):
     required_cores: float
     required_ram: float
-    required_storage_local: float  
-    
-    # is ignored if it is a callback and child of non free node jobs
-    required_storage_workflow: float     
+    required_storage_local: float
 
-    job_secrets: Optional[dict] = {}  
-    
-    timeout:int
+    # is ignored if it is a callback and child of non-free node jobs
+    required_storage_workflow: float
+
+    job_secrets: Optional[dict] = {}
+
+    timeout: int
+
 
 class WKubeTaskKwargs(BaseModel):
-    docker_image: Optional[str]
+    docker_image: Optional[str] = None
 
     job_folder: str = './'
-    
-    repo_url: Optional[str]                # required when docker image is not present
-    repo_branch: Optional[str]             # required when docker image is not present
-    
-    docker_filename: Optional[str]         # when not docker image;
-    base_stack: Optional[str]              # when not github docker file #TODO add enum class of available base stack
-    
+
+    repo_url: Optional[str] = None  # required when docker image is not present
+    repo_branch: Optional[str] = None  # required when docker image is not present
+
+    docker_filename: Optional[str] = None  # when not docker image;
+    base_stack: Optional[str] = None  # when not github docker file #TODO add enum class of available base stack
+
     force_build: bool = False
 
-    command: str                           # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.  
+    command: str  # may not be present with docker_image # TODO wrap a command in custom script to implement timeout or possibly log ingestion if required.
 
-    conf: Dict[str,str] = {}
+    conf: Dict[str, str] = {}
 
-    build_timeout: Optional[int]
+    build_timeout: Optional[int] = None
 
-    def dict(self, *args, **kwargs):
-        result = super().dict(*args, **kwargs)
+    def model_dump(self, *args, **kwargs):
+        result = super().model_dump(*args, **kwargs)
         if 'job_folder' in result:
             del result['job_folder']
         return result
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_root(cls, values):
         if not values.get('docker_image'):
-
             job_folder = values.get('job_folder', './')
 
             if not (values.get('repo_url') and values.get('repo_branch')):
-                    remote_url, branch_name = push_folder_job(
-                        os.path.abspath(job_folder)
-                    )
-                    values['repo_url'] = remote_url
-                    values['repo_branch'] = branch_name
+                remote_url, branch_name = push_folder_job(
+                    os.path.abspath(job_folder)
+                )
+                values['repo_url'] = remote_url
+                values['repo_branch'] = branch_name
             else:
-                if not values.get('repo_url'): 
+                if not values.get('repo_url'):
                     # TODO if has no repo url just set it
                     raise ValueError("repo_url is required")
-                
+
                 if not values.get('repo_branch'):
                     raise ValueError('repo_branch is required')
 
-            
             if not values.get('docker_filename'):
                 if not values.get("base_stack"):
                     raise ValueError("base_stack is required when dockerfile is not defined")
         return values
-    
+
+
 class WKubeTaskPydantic(WKubeTaskMeta, WKubeTaskKwargs):
-   pass
+    pass
 
 
 class GenericTask:
     def __init__(self, *args, **kwargs):
         self.dispatch_model_task: JobDispatchModel
-    
+
     def add_child(self, task):
         if self.__class__ != task.__class__:
             raise ValueError(f"task should of {self.__class__} class")
         self.dispatch_model_task.children.append(task.dispatch_model_task)
 
     def add_callback(self, task):
-        
         if self.__class__ != task.__class__:
             raise ValueError(f"task should of {self.__class__} class")
         self.dispatch_model_task.callback = task.dispatch_model_task
-    
+
     @property
     def description(self):
-        return self.dispatch_model_task.dict()
+        return self.dispatch_model_task.model_dump()
+
 
 class WKubeTask(GenericTask):
     def __init__(self, *t_args, **t_kwargs):
-
+        super().__init__(*t_args, **t_kwargs)
         wkube_task_kwargs = None
-        wkube_task_meta = dict()
+        wkube_task_meta = {}
 
-        
-        name = t_kwargs.pop('name') if 'name' in t_kwargs else None 
-        if (t_args or t_kwargs):        
+        name = t_kwargs.pop('name') if 'name' in t_kwargs else None
+        if t_args or t_kwargs:
             WKubeTaskPydantic(*t_args, **t_kwargs)
             wkube_task_kwargs = WKubeTaskKwargs(*t_args, **t_kwargs)
-            wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).dict(exclude_unset=True))
-            
+            wkube_task_meta.update(WKubeTaskMeta(*t_args, **t_kwargs).model_dump(exclude_unset=True))
 
         self.dispatch_model_task = JobDispatchModel(
             name=name,
@@ -268,9 +256,6 @@ class WKubeTask(GenericTask):
             execute_cluster='WKUBE',
             job_location='acc_native_jobs.dispatch_wkube_task',
             job_args=[],
-            job_kwargs= wkube_task_kwargs.dict(exclude_unset=True) if wkube_task_kwargs else dict(),
+            job_kwargs=wkube_task_kwargs.model_dump(exclude_unset=True) if wkube_task_kwargs else {},
             **wkube_task_meta
         )
-
-
-    
