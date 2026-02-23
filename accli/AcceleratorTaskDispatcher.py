@@ -29,9 +29,9 @@ def compress_folder(folder_path, output_path):
             files.sort()
             for file in files:
                 file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, start=folder_path)
+                arc_name = os.path.relpath(file_path, start=folder_path)
                 # Add a file to zip with a fixed timestamp
-                info = zipfile.ZipInfo(arcname)
+                info = zipfile.ZipInfo(arc_name)
                 info.date_time = fixed_time
                 info.external_attr = 0o600 << 16  # Set file permissions
                 with open(file_path, 'rb') as f:
