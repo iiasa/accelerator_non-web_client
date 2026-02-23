@@ -248,6 +248,7 @@ class GenericTask:
 
 class WKubeTask(GenericTask):
     def __init__(self, *t_args, **t_kwargs):
+        super().__init__(*t_args, **t_kwargs)
         wkube_task_kwargs = None
         wkube_task_meta = dict()
 
