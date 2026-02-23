@@ -18,7 +18,7 @@ def lower_rows(iterator):
         yield item.lower()
 
 
-class CsvRegionalTimeseriesValidator():
+class CsvRegionalTimeseriesValidator:
     def __init__(
             self,
             *,
@@ -123,7 +123,7 @@ class CsvRegionalTimeseriesValidator():
                     self.validation_metadata[key].add(row[key])
 
             else:
-                self.validation_metadata[key] = set([row[key]])
+                self.validation_metadata[key] = {row[key]}
 
         extra_template_validators = self.rules.get('template_validators')
 

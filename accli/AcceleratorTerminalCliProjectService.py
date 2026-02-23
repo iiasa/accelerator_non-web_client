@@ -104,6 +104,7 @@ class AcceleratorTerminalCliProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_github_app_token(self, project_slug):
 
@@ -240,7 +241,8 @@ class AcceleratorTerminalCliProjectService:
             headers=headers
         )
 
-    def read_part_data(self, stream, size, part_data=b"", progress=None):
+    @staticmethod
+    def read_part_data(stream, size, part_data=b"", progress=None):
         """Read part data of the given size from the stream."""
         size -= len(part_data)
         while size:
@@ -369,3 +371,4 @@ class AcceleratorTerminalCliProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None

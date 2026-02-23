@@ -128,7 +128,7 @@ def upload(
 ):
     # TODO make user free to put anywere except for reserved folder
 
-    if not re.fullmatch(r'[a-zA-Z0-9\-\_]+', folder_name):
+    if not re.fullmatch(r'[a-zA-Z0-9\-_]+', folder_name):
         raise ValueError("Folder name is invalid.")
 
     with Progress(
@@ -140,10 +140,10 @@ def upload(
             transient=True
     ) as progress:
 
-        if (os.path.isdir(path)):
+        if os.path.isdir(path):
 
             if not path.endswith("/"):
-                path = path + ("/")
+                path = path + "/"
 
             folder_size = get_size(path)
             print('Folder size', folder_size)
@@ -164,7 +164,7 @@ def upload(
                     continue
                 upload_file(project_slug, accelerator_filename, local_file_path, progress, upload_task, folder_name,
                             max_workers=max_workers)
-        elif (os.path.isfile(path)):
+        elif os.path.isfile(path):
             raise NotImplementedError('Only folder can be uploaded. File upload is not implemented.')
         else:
             print("ERROR: No such file or directory.")

@@ -108,6 +108,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_dataset_type(self, *args, **kwargs):
         return self.get_bucket_object_validation_type(*args, **kwargs)
@@ -120,6 +121,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_filename_dataset_type(self, filename):
         res = self.http_client_request(
@@ -129,6 +131,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_filename_validation_details(self, filename):
         res = self.http_client_request(
@@ -138,6 +141,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_bucket_object_validation_details(self, bucket_object_id):
         res = self.http_client_request(
@@ -147,6 +151,7 @@ class AcceleratorJobProjectService:
         )
         if res.data:
             return todict(res.data)
+        return None
 
     def get_file_url(self, bucket_object_id):
         res = self.http_client_request(
@@ -157,12 +162,14 @@ class AcceleratorJobProjectService:
 
         if res.data:
             return todict(res.data)
+        return None
 
     def get_file_stream(self, bucket_object_id):
         url = self.get_file_url(bucket_object_id)
         if url:
             resp = self.http_client_request("GET", url, preload_content=False)
             return resp
+        return None
 
     def check_job_health(self):
 
@@ -456,7 +463,7 @@ class AcceleratorJobProjectService:
         return todict(res.data)
 
     def read_part_data(self, stream, size, part_data=b"", progress=None):
-        """Read part data of given size from stream."""
+        """Read part data of the given size from the stream."""
         size -= len(part_data)
         while size:
             data = stream.read(size)
@@ -498,7 +505,7 @@ class AcceleratorJobProjectService:
                 )
 
                 # If part_data_size is less or equal to part_size,
-                # then we have reached last part.
+                # then we have reached the last part.
                 if len(part_data) <= part_size:
                     part_count = part_number
                     stop = True
@@ -575,7 +582,7 @@ class AcceleratorJobProjectService:
                 )
 
                 # If part_data_size is less or equal to part_size,
-                # then we have reached last part.
+                # then we have reached the last part.
                 if len(part_data) <= part_size:
                     part_count = part_number
                     stop = True
@@ -649,7 +656,7 @@ class AcceleratorJobProjectService:
                 )
 
                 # If part_data_size is less or equal to part_size,
-                # then we have reached last part.
+                # then we have reached the last part.
                 if len(part_data) <= part_size:
                     part_count = part_number
                     stop = True
@@ -763,7 +770,7 @@ class Fs:
         server_url = os.environ.get("ACC_JOB_GATEWAY_SERVER", None)
 
         if isinstance(source, io.BytesIO):
-            if (user_token and server_url):
+            if user_token and server_url:
                 Fs.write_stream_remote(source, dest_filepath, user_token, server_url)
             else:
                 Fs.write_stream_local(source, dest_filepath)
@@ -775,7 +782,7 @@ class Fs:
                 raise ValueError("Source path does not exist")
 
             with open(source, 'rb') as fstream:
-                if (user_token and server_url):
+                if user_token and server_url:
                     Fs.write_stream_remote(fstream, dest_filepath, user_token, server_url)
                 else:
                     Fs.write_stream_local(fstream, dest_filepath)
