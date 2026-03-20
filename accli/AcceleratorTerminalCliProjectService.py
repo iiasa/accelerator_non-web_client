@@ -172,7 +172,7 @@ class AcceleratorTerminalCliProjectService:
     ):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/{project_slug}/put-multipart-signed-url",
+            f"{self.cli_base_url}/{project_slug}/put-multipart-signed-url/",
             fields=dict(
                 app_bucket_id=app_bucket_id,
                 object_name=object_name,
@@ -190,7 +190,7 @@ class AcceleratorTerminalCliProjectService:
 
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/{project_slug}/create-multipart-upload-id/{b64_filename}",
+            f"{self.cli_base_url}/{project_slug}/create-multipart-upload-id/{b64_filename}/",
             headers=self.common_request_headers
         )
 
@@ -212,7 +212,7 @@ class AcceleratorTerminalCliProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/{project_slug}/complete-create-multipart-upload",
+            f"{self.cli_base_url}/{project_slug}/complete-create-multipart-upload/",
             json=dict(
                 app_bucket_id=app_bucket_id,
                 filename=filename,
@@ -232,7 +232,7 @@ class AcceleratorTerminalCliProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/{project_slug}/abort-create-multipart-upload",
+            f"{self.cli_base_url}/{project_slug}/abort-create-multipart-upload/",
             json=dict(
                 app_bucket_id=app_bucket_id,
                 filename=filename,

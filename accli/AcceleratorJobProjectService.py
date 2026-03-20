@@ -79,7 +79,7 @@ class AcceleratorJobProjectService:
     def get_file_stat(self, bucket_object_id):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/file-stat/{bucket_object_id}",
+            f"{self.cli_base_url}/file-stat/{bucket_object_id}/",
             headers=self.common_request_headers
         )
         return todict(res.data)
@@ -93,7 +93,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}",
+            f"{self.cli_base_url}/{project_slug}/enumerate-all-files/{b64_encoded_prefix}/",
             headers=self.common_request_headers
         )
         if res.data:
@@ -116,7 +116,7 @@ class AcceleratorJobProjectService:
     def get_bucket_object_validation_type(self, bucket_object_id):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/dataset-type/{bucket_object_id}",
+            f"{self.cli_base_url}/dataset-type/{bucket_object_id}/",
             headers=self.common_request_headers
         )
         if res.data:
@@ -146,7 +146,7 @@ class AcceleratorJobProjectService:
     def get_bucket_object_validation_details(self, bucket_object_id):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/validation-detail/{bucket_object_id}",
+            f"{self.cli_base_url}/validation-detail/{bucket_object_id}/",
             headers=self.common_request_headers
         )
         if res.data:
@@ -156,7 +156,7 @@ class AcceleratorJobProjectService:
     def get_file_url(self, bucket_object_id):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/file-url/{bucket_object_id}",
+            f"{self.cli_base_url}/file-url/{bucket_object_id}/",
             headers=self.common_request_headers
         )
 
@@ -231,7 +231,7 @@ class AcceleratorJobProjectService:
     ):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/put-create-signed-url",
+            f"{self.cli_base_url}/put-create-signed-url/",
             fields=dict(
                 app_bucket_id=app_bucket_id,
                 object_name=object_name,
@@ -251,7 +251,7 @@ class AcceleratorJobProjectService:
     ):
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/put-update-signed-url",
+            f"{self.cli_base_url}/put-update-signed-url/",
             fields=dict(
                 filename=filename,
                 upload_id=upload_id,
@@ -310,7 +310,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/complete-create-multipart-upload",
+            f"{self.cli_base_url}/complete-create-multipart-upload/",
             json=dict(
                 app_bucket_id=app_bucket_id,
                 filename=filename,
@@ -336,7 +336,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/complete-validator-multipart-upload",
+            f"{self.cli_base_url}/complete-validator-multipart-upload/",
             json=dict(
                 app_bucket_id=app_bucket_id,
                 filename=filename,
@@ -358,7 +358,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/complete-update-multipart-upload",
+            f"{self.cli_base_url}/complete-update-multipart-upload/",
             json=dict(
                 filename=filename,
                 upload_id=upload_id,
@@ -377,7 +377,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/abort-create-multipart-upload",
+            f"{self.cli_base_url}/abort-create-multipart-upload/",
             json=dict(
                 app_bucket_id=app_bucket_id,
                 filename=filename,
@@ -396,7 +396,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/abort-update-multipart-upload",
+            f"{self.cli_base_url}/abort-update-multipart-upload/",
             json=dict(
                 filename=filename,
                 upload_id=upload_id
@@ -415,7 +415,7 @@ class AcceleratorJobProjectService:
 
     #     res = self.http_client_request(
     #         "PUT", 
-    #         f"{self.cli_base_url}/register-iamc-validation",
+    #         f"{self.cli_base_url}/register-iamc-validation/",
     #         json=dict(
     #             validated_bucket_object_id=validated_bucket_object_id,
     #             indexdb_bucket_object_id=indexdb_bucket_object_id
@@ -436,7 +436,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "PUT",
-            f"{self.cli_base_url}/register-validation",
+            f"{self.cli_base_url}/register-validation/",
             json=dict(
                 validated_bucket_object_id=validated_bucket_object_id,
                 dataset_template_id=dataset_template_id,
@@ -456,7 +456,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "GET",
-            f"{self.cli_base_url}/dataset-template-detail/{dataset_template_id}",
+            f"{self.cli_base_url}/dataset-template-detail/{dataset_template_id}/",
             headers=headers
         )
 
@@ -715,7 +715,7 @@ class AcceleratorJobProjectService:
 
         res = self.http_client_request(
             "POST",
-            f"{self.cli_base_url}/webhook-event",
+            f"{self.cli_base_url}/webhook-event/",
             json=dict(
                 type='STATUS_UPDATE',
                 data=dict(
