@@ -1,7 +1,5 @@
 from accli import WKubeTask
 
-root = WKubeTask(name='root task')
-
 root_task = WKubeTask(name="Rupesh Test")
 
 job_arguments = [
@@ -18,9 +16,9 @@ for args in job_arguments:
         command=f"python main.py",
 
         required_cores=0.5,
-        required_ram=1024 * 1024 * 1024,
-        required_storage_local=1024 * 1024 * 1024,  # MB
-        required_storage_workflow=1024 * 1024,  # MB
+        required_ram=1024 ** 3,
+        required_storage_local=1024 ** 3,  # GB
+        required_storage_workflow=1024 ** 2,  # MB
         timeout=60 * 60 * 24 * 7,
         conf={}
     )
@@ -34,9 +32,9 @@ callback = WKubeTask(
     command=f"python main.py",
 
     required_cores=0.5,
-    required_ram=1024 * 1024 * 1024,
-    required_storage_local=1024 * 1024 * 1024,  # MB
-    required_storage_workflow=1024 * 1024,  # MB
+    required_ram=1024 ** 3,
+    required_storage_local=1024 ** 3,  # GB
+    required_storage_workflow=1024 ** 2,  # MB
     timeout=60 * 60 * 24 * 7,
     conf={}
 )
