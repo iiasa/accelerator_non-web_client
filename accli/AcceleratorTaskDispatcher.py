@@ -135,21 +135,6 @@ class JobDispatchModel(BaseModel):
     children: List['JobDispatchModel'] = []
     callback: Optional['JobDispatchModel'] = None
 
-    def model_dump(self, *args, **kwargs):
-        result = super().model_dump(*args, **kwargs)
-        if result['is_holder_job'] and result['execute_cluster'] == 'WKUBE':
-            if len(result['children']) > 1:
-                if not result['children'][0]['job_kwargs'].get('docker_image'):
-                    builder_task = result['children'][0].copy()
-
-                    builder_task['build_only_task'] = True
-
-                    builder_task['callback'] = result.copy()
-                    builder_task['name'] = f"{builder_task['callback']['name']} -- Image Builder"
-                    builder_task['callback']['name'] = f"{builder_task['callback']['name']} -- Holder"
-                    return builder_task
-        return result
-
 
 class WKubeTaskMeta(BaseModel):
     required_cores: float
