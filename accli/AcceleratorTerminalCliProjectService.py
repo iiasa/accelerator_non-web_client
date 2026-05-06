@@ -281,7 +281,7 @@ class AcceleratorTerminalCliProjectService:
         headers = dict()
         headers["Content-Type"] = "application/octet-stream"
 
-        part_size, part_count = 200 * 1024 ** 2, -1
+        part_size, part_count = 50 * 1024 ** 2, -1
 
         upload_id = None
         app_bucket_id = None
@@ -294,13 +294,21 @@ class AcceleratorTerminalCliProjectService:
         uploaded_size = 0
         put_presigned_url = None
 
-        futures = []
-
         try:
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
 
+                active_futures = set()
+
                 while not stop:
+                    if len(active_futures) >= max_workers:
+                        done, active_futures = concurrent.futures.wait(
+                            active_futures,
+                            return_when=concurrent.futures.FIRST_COMPLETED
+                        )
+                        for f in done:
+                            parts.append(f.result())
+
                     part_number += 1
                     part_data = self.read_part_data(
                         file_stream,
@@ -331,14 +339,16 @@ class AcceleratorTerminalCliProjectService:
                             # headers=headers
                         )
 
-                    future = executor.submit(self.put_part, project_slug, app_bucket_id, uniqified_filename, upload_id,
-                                             part_number, part_data, progress, task)
+                    future = executor.submit(
+                        self.put_part, project_slug, app_bucket_id, uniqified_filename,
+                        upload_id, part_number, part_data, progress, task
+                    )
+                    active_futures.add(future)
 
-                    futures.append(future)
-
-            futures_results = concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
-
-            parts = [f.result() for f in futures_results.done]
+                if active_futures:
+                    done, _ = concurrent.futures.wait(active_futures, return_when=concurrent.futures.ALL_COMPLETED)
+                    for f in done:
+                        parts.append(f.result())
 
             parts.sort(key=lambda x: x[0])
 
