@@ -4,6 +4,7 @@ import json
 import os
 
 import requests
+from requests.adapters import HTTPAdapter
 import urllib3
 from typing import List, Tuple
 
@@ -21,7 +22,12 @@ class AccAPIError(Exception):
         self.status_code = status_code
 
 
-retries = urllib3.util.Retry(total=10, backoff_factor=1)
+retries = urllib3.util.Retry(
+    total=10,
+    backoff_factor=1,
+    status_forcelist=[408, 429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS", "PUT"]
+)
 
 http_client = urllib3.poolmanager.PoolManager(
     num_pools=20, retries=retries, maxsize=2000, block=True
@@ -41,8 +47,9 @@ class AcceleratorTerminalCliProjectService:
     ):
 
         self.user_token = user_token
+        self.verify_cert = verify_cert
 
-        if verify_cert:
+        if self.verify_cert:
             self.http_client = http_client
         else:
             self.http_client = http_client_wo_cert_verification
@@ -264,16 +271,22 @@ class AcceleratorTerminalCliProjectService:
             project_slug, app_bucket_id, uniqified_filename, upload_id, part_number
         )
 
-        part_upload_response = requests.put(
-            put_presigned_url,
-            data=part_data,
-            # headers=headers,
-            verify=False,
-        )
+        session = requests.Session()
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("https://", adapter)
+        session.verify = self.verify_cert
+
+        with session.put(
+                put_presigned_url,
+                data=part_data,
+                timeout=120
+        ) as part_upload_response:
+            part_upload_response.raise_for_status()
+
+            etag = part_upload_response.headers.get("etag").replace('"', "")
 
         progress.update(task, advance=len(part_data))
 
-        etag = part_upload_response.headers.get("etag").replace('"', "")
         return part_number, etag
 
     def upload_filestream_to_accelerator(self, project_slug, filename, file_stream, progress, task,
