@@ -12,7 +12,7 @@ from typing import List
 
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
-from accli.token import save_token_details, get_token, get_server_url, set_project_slug
+from accli.token import save_token_details, get_token, get_server_url, set_project_slug, get_project_slug, get_db_path
 from rich import print
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 from typing_extensions import Annotated
@@ -307,3 +307,472 @@ def copy(
                 if partial_file.exists():
                     partial_file.unlink()
                 typer.echo(f"✖ Failed to download {filename}: {e}", err=True)
+
+
+# --- Mount commands group ---
+mount_app = typer.Typer(
+    help="Manage mounting Accelerator project spaces locally using hf-mount.",
+    no_args_is_help=True
+)
+app.add_typer(mount_app, name="mount")
+
+
+def find_available_windows_drive(preferred: str = "W") -> str:
+    """Finds an available Windows drive letter, starting with preferred, then checking others."""
+    import os
+    preferred = preferred.upper()
+    if not os.path.exists(f"{preferred}:\\"):
+        return f"{preferred}:"
+        
+    # Search order: subsequent letters first, then previous descending to D
+    search_order = ["X", "Y", "Z"] + [chr(x) for x in range(ord("V"), ord("D") - 1, -1)]
+    for letter in search_order:
+        if not os.path.exists(f"{letter}:\\"):
+            return f"{letter}:"
+            
+    raise RuntimeError("No available Windows drive letters found.")
+
+
+def enable_windows_nfs_features():
+    """Automatically check and enable Windows Client for NFS optional features if needed."""
+    import subprocess
+    import platform
+    
+    print("[cyan]Checking if Windows Client for NFS features are enabled...[/cyan]")
+    check_cmd = [
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+        "Get-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly"
+    ]
+    try:
+        res = subprocess.run(check_cmd, capture_output=True, text=True, check=True)
+        if "State : Enabled" in res.stdout or "State: Enabled" in res.stdout:
+            print("[bold green]✔ ServicesForNFS-ClientOnly is already enabled.[/bold green]")
+            return
+    except Exception:
+        pass
+
+    print("[yellow]Windows Client for NFS features are not enabled. Attempting automatic enablement...[/yellow]")
+    print("[italic]Note: This requires Administrator/elevated privileges.[/italic]")
+    
+    enable_client_cmd = [
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+        "Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly,ClientForNFS-Infrastructure -All -NoRestart"
+    ]
+    
+    enable_server_cmd = [
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+        "Install-WindowsFeature -Name NFS-Client"
+    ]
+    
+    try:
+        result = subprocess.run(enable_client_cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print("[bold green]✔ Successfully enabled Windows NFS Client features.[/bold green]")
+            return
+        else:
+            result_server = subprocess.run(enable_server_cmd, capture_output=True, text=True)
+            if result_server.returncode == 0:
+                print("[bold green]✔ Successfully installed Windows Server NFS-Client feature.[/bold green]")
+                return
+            else:
+                print("[bold red]✖ Failed to enable Windows NFS Client features automatically.[/bold red]")
+                if result.stderr:
+                    print(f"[red]{result.stderr.strip()}[/red]")
+                if result_server.stderr:
+                    print(f"[red]{result_server.stderr.strip()}[/red]")
+                print("[yellow]Please run the following command manually in an elevated/Administrator PowerShell:[/yellow]")
+                print("  Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly,ClientForNFS-Infrastructure -All")
+    except Exception as e:
+        print(f"[bold red]ERROR: Could not execute enablement commands: {e}[/bold red]")
+        print("[yellow]Please make sure you are running as Administrator and try running the command manually.[/yellow]")
+
+
+@mount_app.command("start")
+def mount_start(
+    mount_point: Annotated[Path, typer.Argument(help="Local directory path where the filesystem will be mounted. (On Windows, drive letter like W:)")] = None,
+    project_slug: Annotated[str, typer.Option(help="Unique Accelerator project slug (defaults to active project).")] = None,
+    mode: Annotated[str, typer.Option(help="Mounting mode: 'bucket' (read-write, default) or 'repo' (read-only).")] = "bucket",
+    fuse: Annotated[bool, typer.Option("--fuse", help="Use FUSE backend instead of the default NFS backend.")] = False,
+    overlay: Annotated[bool, typer.Option("--overlay", help="Enable overlay mode (local writes only, remote read-only).")] = False,
+    read_only: Annotated[bool, typer.Option("--read-only", help="Force read-only mount.")] = False,
+    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+):
+    """
+    Start a mount as a background daemon.
+    """
+    from . import mount_downloader
+    import platform
+    import re
+    
+    sys_name = platform.system()
+    
+    # Resolve project_slug
+    if not project_slug:
+        try:
+            project_slug = get_project_slug()
+        except Exception:
+            pass
+            
+    if not project_slug:
+        print("[bold red]ERROR: Project slug is not set. Please provide --project-slug or set an active project.[/bold red]")
+        raise typer.Exit(1)
+        
+    # Get credentials
+    try:
+        token = get_token()
+        server_url = get_server_url()
+    except Exception as e:
+        print(f"[bold red]ERROR: Could not retrieve login details. Please run 'accli login' first. Details: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    # Validate mode
+    if mode not in ["bucket", "repo"]:
+        print("[bold red]ERROR: Mode must be either 'bucket' or 'repo'.[/bold red]")
+        raise typer.Exit(1)
+
+    # Ensure binaries are downloaded and cached
+    try:
+        mount_downloader.ensure_binaries(version=binary_version, use_fuse=fuse)
+    except Exception as e:
+        print(f"[bold red]ERROR: Binary download/preparation failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    # Standardize mount_point and handle defaults / auto-selection
+    if sys_name == "Windows":
+        if mount_point is None:
+            # Auto-detect available drive letter starting with W
+            try:
+                drive = find_available_windows_drive("W")
+                mount_point_abs = Path(drive)
+                print(f"[cyan]No mount point specified. Selected available drive letter: [bold white]{drive}[/bold white][/cyan]")
+            except Exception as e:
+                print(f"[bold red]ERROR: {e}[/bold red]")
+                raise typer.Exit(1)
+        else:
+            mount_point_str = str(mount_point)
+            if re.match(r"^[a-zA-Z]:?\\?$", mount_point_str) or re.match(r"^[a-zA-Z]:/?$", mount_point_str):
+                drive_letter = mount_point_str[0].upper()
+                if os.path.exists(f"{drive_letter}:\\"):
+                    print(f"[yellow]Warning: Drive '{drive_letter}:' is already in use.[/yellow]")
+                    try:
+                        fallback_drive = find_available_windows_drive("W")
+                        print(f"[cyan]Falling back to first available drive: [bold white]{fallback_drive}[/bold white][/cyan]")
+                        mount_point_abs = Path(fallback_drive)
+                    except Exception as e:
+                        print(f"[bold red]ERROR: Drive is in use and no alternative could be found: {e}[/bold red]")
+                        raise typer.Exit(1)
+                else:
+                    mount_point_abs = Path(f"{drive_letter}:")
+            else:
+                mount_point_abs = mount_point.resolve()
+    else:
+        if mount_point is None:
+            # Default mount point on Unix: ~/accelerator/mnt/<project_slug>
+            mnt_dir = Path.home() / "accelerator" / "mnt" / project_slug
+            mnt_dir.mkdir(parents=True, exist_ok=True)
+            mount_point_abs = mnt_dir.resolve()
+            print(f"[cyan]No mount point specified. Selected default directory: [bold white]{mount_point_abs}[/bold white][/cyan]")
+        else:
+            mount_point_abs = mount_point.resolve()
+
+    # Construct environment
+    env = os.environ.copy()
+    env["ACCELERATOR_MOUNT"] = "1"
+    env["ACC_ENDPOINT"] = server_url
+    env["ACC_CAS_ENDPOINT"] = f"{server_url.rstrip('/')}/api/xet-cas"
+    env["ACC_TOKEN"] = token
+
+    if sys_name == "Windows":
+        # Enable Windows NFS Client features if needed
+        enable_windows_nfs_features()
+        
+        hf_mount_bin = mount_downloader.get_binary_path("hf-mount-nfs")
+        if not hf_mount_bin.is_file():
+            import shutil
+            found_bin = shutil.which("hf-mount-nfs")
+            if found_bin:
+                hf_mount_bin = Path(found_bin)
+            else:
+                print("[bold red]ERROR: hf-mount-nfs binary not found in cache or system PATH.[/bold red]")
+                raise typer.Exit(1)
+
+        # Windows NFS Mount Setup
+        db_path = os.path.normpath(get_db_path())
+        args = [
+            str(hf_mount_bin),
+            "--token-file", db_path,
+            "--hub-endpoint", server_url,
+            mode,
+            project_slug,
+            str(mount_point_abs)
+        ]
+        if overlay:
+            args.append("--overlay")
+        if read_only:
+            args.append("--read-only")
+
+        print(f"[bold cyan]Starting Windows NFS mount for project '[white]{project_slug}[/white]' at '[white]{mount_point_abs}[/white]' in background...[/bold cyan]")
+        
+        # Prepare background logger
+        log_file_path = Path.home() / ".accli" / "mount.log"
+        # Ensure directory exists
+        log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            log_file = open(log_file_path, "a", encoding="utf-8")
+        except Exception:
+            log_file = subprocess.DEVNULL
+
+        import subprocess
+        try:
+            # Spawn decoupled background process on Windows using DETACHED_PROCESS creation flag (0x00000008)
+            creationflags = 0x00000008
+            process = subprocess.Popen(
+                args,
+                env=env,
+                creationflags=creationflags,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                close_fds=True
+            )
+            
+            # Startup verification (1-second boot poll)
+            import time
+            time.sleep(1.0)
+            if process.poll() is not None:
+                # Process has already terminated!
+                print(f"[bold red]✖ Failed to start Windows NFS mount process (exit code {process.returncode}).[/bold red]")
+                try:
+                    if log_file_path.is_file():
+                        with open(log_file_path, "r", encoding="utf-8") as lf:
+                            lines = lf.readlines()
+                            last_lines = "".join(lines[-10:])
+                            print("[red]Recent log output:[/red]")
+                            print(f"[dim]{last_lines.strip()}[/dim]")
+                except Exception:
+                    pass
+                print(f"[yellow]Please check the log file at {log_file_path} for more details.[/yellow]")
+                raise typer.Exit(1)
+                
+            print(f"[bold green]✔ NFS mount process spawned successfully (PID: {process.pid}).[/bold green]")
+            print(f"[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
+        except Exception as e:
+            if isinstance(e, typer.Exit):
+                raise e
+            print(f"[bold red]ERROR: Failed to spawn Windows mount process: {e}[/bold red]")
+            raise typer.Exit(1)
+
+    else:
+        # Unix FUSE / NFS Daemonizer Setup
+        hf_mount_bin = mount_downloader.get_binary_path("hf-mount")
+        if not hf_mount_bin.is_file():
+            import shutil
+            found_bin = shutil.which("hf-mount")
+            if found_bin:
+                hf_mount_bin = Path(found_bin)
+            else:
+                print("[bold red]ERROR: hf-mount binary not found in cache or system PATH.[/bold red]")
+                raise typer.Exit(1)
+
+        args = [str(hf_mount_bin), "start"]
+        if fuse:
+            args.append("--fuse")
+        
+        db_path = get_db_path()
+        args.extend(["--token-file", db_path])
+        args.extend(["--hub-endpoint", server_url])
+        args.extend([mode, project_slug, str(mount_point_abs)])
+        
+        if overlay:
+            args.append("--overlay")
+        if read_only:
+            args.append("--read-only")
+
+        print(f"[bold cyan]Starting mount for project '[white]{project_slug}[/white]' at '[white]{mount_point_abs}[/white]'...[/bold cyan]")
+        import subprocess
+        try:
+            result = subprocess.run(args, env=env, capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"[bold green]✔ Mount started successfully![/bold green]")
+                if result.stdout:
+                    print(result.stdout)
+            else:
+                print(f"[bold red]✖ Failed to start mount (exit code {result.returncode}):[/bold red]")
+                if result.stderr:
+                    print(f"[red]{result.stderr}[/red]")
+                if result.stdout:
+                    print(result.stdout)
+                raise typer.Exit(result.returncode)
+        except Exception as e:
+            print(f"[bold red]ERROR: Failed to execute mount process: {e}[/bold red]")
+            raise typer.Exit(1)
+
+
+@mount_app.command("stop")
+def mount_stop(
+    mount_point: Annotated[Path, typer.Argument(help="Mount point of the daemon to stop.")] = None,
+    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+):
+    """
+    Stop a running daemon.
+    """
+    from . import mount_downloader
+    import platform
+    import re
+    
+    sys_name = platform.system()
+    
+    # Resolve mount point if None
+    if mount_point is None:
+        if sys_name == "Windows":
+            mount_point_abs = Path("W:")
+        else:
+            try:
+                project_slug = get_project_slug()
+            except Exception:
+                project_slug = None
+            if not project_slug:
+                print("[bold red]ERROR: Mount point not specified and active project slug could not be determined.[/bold red]")
+                raise typer.Exit(1)
+            mount_point_abs = Path.home() / "accelerator" / "mnt" / project_slug
+            print(f"[cyan]No mount point specified. Selected default directory: [bold white]{mount_point_abs}[/bold white][/cyan]")
+    else:
+        mount_point_str = str(mount_point)
+        if sys_name == "Windows" and re.match(r"^[a-zA-Z]:?\\?$", mount_point_str):
+            mount_point_abs = Path(mount_point_str[0].upper() + ":")
+        else:
+            mount_point_abs = mount_point.resolve()
+
+    if sys_name == "Windows":
+        print(f"[bold cyan]Stopping mount at '[white]{mount_point_abs}[/white]' on Windows...[/bold cyan]")
+        import subprocess
+        
+        # 1. Run Windows standard umount command
+        res = subprocess.run(["umount", "-f", str(mount_point_abs)], capture_output=True, text=True)
+        
+        # 2. Selective Kill: Target and terminate only the specific process using the target mount point using a PowerShell command-line filter
+        try:
+            escaped_mount_point = str(mount_point_abs).replace("'", "''")
+            kill_cmd = [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                f"Get-CimInstance Win32_Process -Filter \"name='hf-mount-nfs.exe'\" | "
+                f"Where-Object {{ $_.CommandLine -like '*{escaped_mount_point}*' }} | "
+                f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
+            ]
+            subprocess.run(kill_cmd, capture_output=True)
+        except Exception:
+            # Fallback to killing all instances if selective filter fails
+            subprocess.run(["taskkill", "/f", "/im", "hf-mount-nfs.exe"], capture_output=True)
+        
+        if res.returncode == 0 or "successfully" in res.stdout or "successfully" in res.stderr:
+            print("[bold green]✔ Mount stopped successfully.[/bold green]")
+        else:
+            print("[yellow]Attempted to unmount. Please verify drive status manually using 'umount'.[/yellow]")
+            if res.stderr:
+                print(f"[red]{res.stderr.strip()}[/red]")
+        return
+
+    # Ensure binaries are downloaded and cached (Unix)
+    try:
+        mount_downloader.ensure_binaries(version=binary_version)
+    except Exception as e:
+        print(f"[bold red]ERROR: Binary download/preparation failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    hf_mount_bin = mount_downloader.get_binary_path("hf-mount")
+    if not hf_mount_bin.is_file():
+        import shutil
+        found_bin = shutil.which("hf-mount")
+        if found_bin:
+            hf_mount_bin = Path(found_bin)
+        else:
+            print("[bold red]ERROR: hf-mount binary not found in cache or system PATH.[/bold red]")
+            raise typer.Exit(1)
+
+    args = [str(hf_mount_bin), "stop", str(mount_point_abs)]
+
+    print(f"[bold cyan]Stopping mount at '[white]{mount_point_abs}[/white]'...[/bold cyan]")
+    
+    import subprocess
+    try:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"[bold green]✔ Mount stopped successfully.[/bold green]")
+        else:
+            print(f"[bold red]✖ Failed to stop mount (exit code {result.returncode}):[/bold red]")
+            if result.stderr:
+                print(f"[red]{result.stderr}[/red]")
+            raise typer.Exit(result.returncode)
+    except Exception as e:
+        print(f"[bold red]ERROR: Failed to execute stop process: {e}[/bold red]")
+        raise typer.Exit(1)
+
+
+@mount_app.command("status")
+def mount_status(
+    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+):
+    """
+    List all running mount daemons.
+    """
+    from . import mount_downloader
+    import platform
+    
+    sys_name = platform.system()
+
+    if sys_name == "Windows":
+        import subprocess
+        print("[bold cyan]Active NFS mounts on Windows:[/bold cyan]")
+        try:
+            # Windows 'mount' command lists active NFS mounts
+            result = subprocess.run(["mount"], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                print(result.stdout)
+            else:
+                # Check tasklist for active daemon process
+                task_res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
+                if "hf-mount-nfs.exe" in task_res.stdout:
+                    print("[cyan]hf-mount-nfs.exe process is running in the background.[/cyan]")
+                else:
+                    print("[cyan]No running mounts found.[/cyan]")
+        except Exception as e:
+            print(f"[red]Could not retrieve mount status: {e}[/red]")
+        return
+
+    # Ensure binaries are downloaded and cached (Unix)
+    try:
+        mount_downloader.ensure_binaries(version=binary_version)
+    except Exception as e:
+        print(f"[bold red]ERROR: Binary download/preparation failed: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    hf_mount_bin = mount_downloader.get_binary_path("hf-mount")
+    if not hf_mount_bin.is_file():
+        import shutil
+        found_bin = shutil.which("hf-mount")
+        if found_bin:
+            hf_mount_bin = Path(found_bin)
+        else:
+            print("[bold red]ERROR: hf-mount binary not found in cache or system PATH.[/bold red]")
+            raise typer.Exit(1)
+
+    args = [str(hf_mount_bin), "status"]
+
+    import subprocess
+    try:
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode == 0:
+            stdout = result.stdout.strip()
+            if not stdout:
+                print("[cyan]No running mounts found.[/cyan]")
+            else:
+                print("[bold cyan]Active Mounts:[/bold cyan]")
+                print(stdout)
+        else:
+            print(f"[bold red]✖ Failed to retrieve mount status (exit code {result.returncode}):[/bold red]")
+            if result.stderr:
+                print(f"[red]{result.stderr}[/red]")
+            raise typer.Exit(result.returncode)
+    except Exception as e:
+        print(f"[bold red]ERROR: Failed to execute status process: {e}[/bold red]")
+        raise typer.Exit(1)
+
