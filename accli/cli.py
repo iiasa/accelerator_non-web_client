@@ -3,6 +3,8 @@ import importlib.util
 import os
 import re
 import warnings
+import hashlib
+import hf_xet
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -72,7 +74,7 @@ def login(
         f"[bold cyan]Powered by IIASA[/bold cyan]\n"
     )
 
-    print(f"[italic]Get authorization code on following web url: [cyan]{webcli}/acli-auth-code[cyan][/italic] \n")
+    print(f"[italic]Get authorization code on following web url: [cyan]{webcli}/acli-auth-code[/cyan][/italic] \n")
 
     device_authorization_code = typer.prompt("Enter the authorization code?")
 
@@ -85,7 +87,7 @@ def login(
     print("")
 
     if token_response.status_code == 400:
-        print(f"[bold red]ERROR: {token_response.json().get('detail')}[/red]")
+        print(f"[bold red]ERROR: {token_response.json().get('detail')}[/bold red]")
         raise typer.Exit(1)
 
     save_token_details(token_response.json(), server, webcli)
@@ -93,82 +95,7 @@ def login(
     print("[bold green]Successfully logged in.[/bold green]:rocket: :rocket:")
 
 
-def upload_file(project_slug, accelerator_filename, local_filepath, progress, task, folder_name,
-                max_workers=os.cpu_count()):
-    access_token = get_token()
-
-    server_url = get_server_url()
-
-    term_cli_project_service = AcceleratorTerminalCliProjectService(
-        user_token=access_token,
-        server_url=server_url,
-        verify_cert=(not ACCLI_DEBUG)
-    )
-
-    stat = term_cli_project_service.get_file_stat(project_slug, f"{folder_name}/{accelerator_filename}")
-
-    if stat:
-        progress.update(task, advance=stat.get('size'))
-    else:
-
-        with open(local_filepath, 'rb') as file_stream:
-            term_cli_project_service.upload_filestream_to_accelerator(project_slug,
-                                                                      f"{folder_name}/{accelerator_filename}",
-                                                                      file_stream, progress, task,
-                                                                      max_workers=max_workers)
-
-
-@app.command()
-def upload(
-        project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
-        path: Annotated[str, typer.Argument(help="Folder path to upload to Accelerator project space.")],
-        folder_name: Annotated[str, typer.Argument(help="Name of the folder to be made in Accelerator project space.")],
-        max_workers: Annotated[
-            int, typer.Option(..., '-w', help="Maximum worker pool for multipart upload.")] = os.cpu_count()
-):
-    # TODO make user free to put anywere except for reserved folder
-
-    if not re.fullmatch(r'[a-zA-Z0-9\-_]+', folder_name):
-        raise ValueError("Folder name is invalid.")
-
-    with Progress(
-            TextColumn("[progress.description]"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            TextColumn("{task.description}"),
-            transient=True
-    ) as progress:
-
-        if os.path.isdir(path):
-
-            if not path.endswith("/"):
-                path = path + "/"
-
-            folder_size = get_size(path)
-            print('Folder size', folder_size)
-            upload_task = progress.add_task("[cyan]Uploading.", total=folder_size)
-
-            for local_file_path in glob.iglob(f"{path}/**/*.*", recursive=True):
-                accelerator_filename = os.path.relpath(local_file_path, path)
-
-                if os.name == 'nt':
-                    accelerator_filename = accelerator_filename.replace('\\', '/')
-
-                progress.update(
-                    upload_task,
-                    description=f"[cyan]Uploading {local_file_path} \t"
-                )
-
-                if not os.path.isfile(local_file_path):
-                    continue
-                upload_file(project_slug, accelerator_filename, local_file_path, progress, upload_task, folder_name,
-                            max_workers=max_workers)
-        elif os.path.isfile(path):
-            raise NotImplementedError('Only folder can be uploaded. File upload is not implemented.')
-        else:
-            print("ERROR: No such file or directory.")
-            typer.Exit(1)
+# Upload functionality is now integrated into the unified 'copy' command.
 
 
 @app.command()
@@ -202,8 +129,9 @@ def dispatch(
         workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
 ):
     set_project_slug(project_slug)
-    access_token = get_token()
     server_url = get_server_url()
+    # Exchange the refresh token for a short-lived access token
+    _, access_token, _ = exchange_refresh_token(project_slug)
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
@@ -244,14 +172,125 @@ def dispatch(
     print(f"Dispatched root job #ID: {root_job_id}")
 
 
+def compute_sha256(filepath: str) -> str:
+    """Helper to compute the SHA-256 hash of a file locally."""
+    h = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+import threading
+
+_token_lock = threading.Lock()
+_cached_cas_token = None
+_cached_expires_at = 0
+_cached_access_token = None
+
+
+def exchange_refresh_token(project_slug: str) -> tuple[str, str, int]:
+    """
+    Exchanges the stored refresh token for a short-lived access token
+    and a new rotated refresh token. Updates the local TinyDB token cache.
+    Returns (cas_token, access_token, expires_at).
+    """
+    import time
+    from tinydb import TinyDB
+    from accli.token import get_db_path, save_token_details
+    
+    global _cached_cas_token, _cached_expires_at, _cached_access_token
+    
+    # 1. Fast-path check: Reuse valid in-memory cache if still fresh (> 5 mins remaining)
+    # and matches the requested project slug prefix.
+    now = int(time.time())
+    if _cached_cas_token and _cached_access_token and (_cached_expires_at - now > 300):
+        expected_prefix = f"xet_session_prj_{project_slug}_"
+        if _cached_cas_token.startswith(expected_prefix):
+            return _cached_cas_token, _cached_access_token, _cached_expires_at
+            
+    # 2. Block/lock to serialize requests and avoid rotation race conditions (RTR invalidation)
+    with _token_lock:
+        # Re-check cache inside the lock (double-checked locking pattern)
+        now = int(time.time())
+        if _cached_cas_token and _cached_access_token and (_cached_expires_at - now > 300):
+            expected_prefix = f"xet_session_prj_{project_slug}_"
+            if _cached_cas_token.startswith(expected_prefix):
+                return _cached_cas_token, _cached_access_token, _cached_expires_at
+                
+        db_path = get_db_path()
+        db = TinyDB(db_path)
+        item = next(iter(db), {})
+        refresh_token = item.get('token')
+        server_url = item.get('server_url', "https://accelerator.iiasa.ac.at")
+        webcli_url = item.get('webcli_url', "https://accelerator.iiasa.ac.at")
+        
+        if not refresh_token:
+            print("[bold red]ERROR: No token found. Please run 'accli login' first.[/bold red]")
+            raise typer.Exit(1)
+            
+        refresh_endpoint = f"{server_url.rstrip('/')}/api/v1/oauth/device/access-token/"
+        
+        try:
+            response = requests.post(
+                refresh_endpoint,
+                json={"refresh_token": refresh_token},
+                verify=(not ACCLI_DEBUG)
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            access_token = data["access_token"]
+            new_refresh_token = data["refresh_token"]
+            
+            # Save rotated refresh token back to local TinyDB
+            save_token_details(new_refresh_token, server_url, webcli_url)
+            
+            cas_token = f"xet_session_prj_{project_slug}_{access_token}"
+            # Expire slightly before the 1-hour limit (e.g. 50 minutes)
+            expires_at = int(time.time()) + 3000
+            
+            # Populate in-memory cache
+            _cached_cas_token = cas_token
+            _cached_access_token = access_token
+            _cached_expires_at = expires_at
+            
+            return cas_token, access_token, expires_at
+        except Exception as e:
+            print(f"[bold red]ERROR: Failed to authenticate/exchange refresh token: {e}[/bold red]")
+            raise typer.Exit(1)
+
+
 @app.command()
 def copy(
-        acc_src: Annotated[str, typer.Argument(help="Source path in Accelerator project space")],
-        destination: Annotated[str, typer.Option(..., "-d", help="Destination directory")] = "./",
-        token_pass: Annotated[str, typer.Option(..., "-t", help="Destination directory")] = "",
+        source: Annotated[str, typer.Argument(help="Source path (local path or remote acc://...)")],
+        destination: Annotated[str, typer.Argument(help="Destination path (local path or remote acc://...)")],
+        token_pass: Annotated[str, typer.Option(..., "-t", help="Optional authorization token pass.")] = "",
 ):
-    access_token = get_token()
+    """
+    Copy files between local filesystems and Accelerator project spaces using hf-xet.
+    At least one of the paths must be a remote path starting with 'acc://'.
+    """
+    is_src_remote = source.startswith("acc://")
+    is_dest_remote = destination.startswith("acc://")
+
+    if not is_src_remote and not is_dest_remote:
+        print("[bold red]ERROR: Either source or destination must start with acc://[/bold red]")
+        raise typer.Exit(1)
+    if is_src_remote and is_dest_remote:
+        print("[bold red]ERROR: Remote-to-remote copy is not supported. One path must be local.[/bold red]")
+        raise typer.Exit(1)
+
+    # Resolve project_slug from the remote path
+    remote_path_str = source if is_src_remote else destination
+    parsed = remote_path_str[len("acc://"):]
+    if "/" in parsed:
+        project_slug, remote_subpath = parsed.split("/", 1)
+    else:
+        project_slug = parsed
+        remote_subpath = ""
+
     server_url = get_server_url()
+    cas_token, access_token, expires_at = exchange_refresh_token(project_slug)
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
@@ -259,54 +298,221 @@ def copy(
         verify_cert=(not ACCLI_DEBUG),
     )
 
-    dest_path = Path(destination).expanduser().resolve()
-    dest_path.mkdir(parents=True, exist_ok=True)
+    def make_token_refresher(slug: str):
+        def refresher() -> tuple[str, int]:
+            token_str, _, exp_time = exchange_refresh_token(slug)
+            return token_str, exp_time
+        return refresher
 
-    filenames: List[str] = term_cli_project_service.enumerate_files_by_prefix(acc_src, token_pass=token_pass)
+    if is_src_remote:
+        # Download flow: acc://[project_slug]/[remote_prefix] -> local destination
+        source_parsed = source[len("acc://"):]
+        if "/" in source_parsed:
+            _, remote_prefix = source_parsed.split("/", 1)
+        else:
+            remote_prefix = ""
 
-    with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TimeElapsedColumn(),
-            transient=True,
-    ) as progress:
+        cas_endpoint = f"{server_url.rstrip('/')}/api/xet-cas"
 
+        print(f"[cyan]Enumerating remote files for prefix [white]{source_parsed}[/white]...[/cyan]")
+        filenames: List[str] = term_cli_project_service.enumerate_files_by_prefix(source_parsed, token_pass=token_pass)
+
+        if not filenames:
+            print("[bold yellow]No files found matching the remote prefix.[/bold yellow]")
+            raise typer.Exit(0)
+
+        dest_path = Path(destination).expanduser().resolve()
+        is_dest_dir = (
+            dest_path.is_dir()
+            or destination.endswith("/")
+            or destination.endswith(os.sep)
+            or len(filenames) > 1
+        )
+
+        if is_dest_dir:
+            dest_path.mkdir(parents=True, exist_ok=True)
+        else:
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        download_infos = []
         for filename in filenames:
-            local_file = dest_path / filename
-            local_file.parent.mkdir(parents=True, exist_ok=True)
+            # Filename returned usually starts with project_slug/
+            if filename.startswith(f"{project_slug}/"):
+                rel_filename = filename[len(project_slug):]
+            elif filename.startswith(project_slug):
+                rel_filename = filename[len(project_slug):]
+            else:
+                rel_filename = filename
 
-            final_file = local_file
-            partial_file = local_file.with_suffix(local_file.suffix + ".part")
+            if not rel_filename.startswith("/"):
+                rel_filename = "/" + rel_filename
 
-            if final_file.exists():
-                typer.echo(f"Skipping {final_file} (already exists)")
+            print(f"[dim]Resolving metadata for {filename}...[/dim]")
+            stat = term_cli_project_service.get_file_stat(project_slug, rel_filename)
+            if not stat:
+                print(f"[yellow]Warning: Could not get metadata for {filename}, skipping.[/yellow]")
                 continue
 
-            typer.echo(f"Downloading {filename} -> {final_file}")
+            merkle_hash = stat.get("merkle_hash")
+            file_size = stat.get("size")
+            if not merkle_hash or file_size is None:
+                print(f"[yellow]Warning: Missing merkle hash or size for {filename}, skipping.[/yellow]")
+                continue
+
+            if is_dest_dir:
+                # Determine local subpath under destination
+                if remote_prefix:
+                    prefix_to_strip = f"{project_slug}/{remote_prefix}"
+                    if filename.startswith(prefix_to_strip):
+                        rel_subpath = filename[len(prefix_to_strip):].lstrip("/")
+                    else:
+                        rel_subpath = filename[len(project_slug):].lstrip("/")
+                else:
+                    rel_subpath = filename[len(project_slug):].lstrip("/")
+
+                local_dest = dest_path / rel_subpath
+            else:
+                local_dest = dest_path
+
+            local_dest.parent.mkdir(parents=True, exist_ok=True)
+
+            download_infos.append(
+                hf_xet.PyXetDownloadInfo(
+                    destination_path=str(local_dest.resolve()),
+                    hash=merkle_hash,
+                    file_size=file_size
+                )
+            )
+
+        if not download_infos:
+            print("[bold red]ERROR: No valid files identified for download.[/bold red]")
+            raise typer.Exit(1)
+
+        print(f"[bold cyan]Downloading {len(download_infos)} files using hf-xet...[/bold cyan]")
+        try:
+            hf_xet.download_files(
+                files=download_infos,
+                endpoint=cas_endpoint,
+                token_info=(cas_token, expires_at),
+                token_refresher=make_token_refresher(project_slug),
+                progress_updater=None,
+                request_headers=None
+            )
+            print("[bold green]✔ Download completed successfully![/bold green]")
+        except Exception as e:
+            print(f"[bold red]ERROR: Download failed: {e}[/bold red]")
+            raise typer.Exit(1)
+
+    else:
+        # Upload flow: local source -> acc://[project_slug]/[remote_path]
+        dest_parsed = destination[len("acc://"):]
+        if "/" in dest_parsed:
+            project_slug, remote_path = dest_parsed.split("/", 1)
+        else:
+            project_slug = dest_parsed
+            remote_path = ""
+
+        cas_endpoint = f"{server_url.rstrip('/')}/api/xet-cas"
+        register_url = f"{server_url.rstrip('/')}/api/xet-cas/v1/cas/bulk-register"
+
+        local_src_path = Path(source).expanduser().resolve()
+        if not local_src_path.exists():
+            print(f"[bold red]ERROR: Local source path does not exist: {source}[/bold red]")
+            raise typer.Exit(1)
+
+        # Collect local files and map to remote filenames
+        local_paths = []
+        remote_filenames = []
+
+        if local_src_path.is_dir():
+            # Recursively find all files
+            for local_file in local_src_path.rglob("*"):
+                if local_file.is_file():
+                    rel_subpath = local_file.relative_to(local_src_path)
+                    # Remote filename should be relative under project_slug
+                    if remote_path:
+                        remote_name = f"{remote_path.rstrip('/')}/{rel_subpath}"
+                    else:
+                        remote_name = str(rel_subpath)
+                    
+                    if os.name == 'nt':
+                        remote_name = remote_name.replace('\\', '/')
+                        
+                    local_paths.append(local_file)
+                    remote_filenames.append(remote_name)
+        else:
+            # Single file
+            if remote_path.endswith("/") or not remote_path:
+                remote_name = f"{remote_path.rstrip('/')}/{local_src_path.name}".lstrip("/")
+            else:
+                remote_name = remote_path
+                
+            local_paths.append(local_src_path)
+            remote_filenames.append(remote_name)
+
+        if not local_paths:
+            print("[bold yellow]No files to upload.[/bold yellow]")
+            raise typer.Exit(0)
+
+        print(f"[bold cyan]Uploading {len(local_paths)} files using hf-xet...[/bold cyan]")
+        try:
+            upload_results = hf_xet.upload_files(
+                file_paths=[str(p) for p in local_paths],
+                endpoint=cas_endpoint,
+                token_info=(cas_token, expires_at),
+                token_refresher=make_token_refresher(project_slug),
+                progress_updater=None,
+                _repo_type=None,
+                request_headers=None,
+                sha256s=None,
+                skip_sha256=False
+            )
+        except Exception as e:
+            print(f"[bold red]ERROR: Upload failed: {e}[/bold red]")
+            raise typer.Exit(1)
+
+        # Compute SHA-256 locally and register metadata in database
+        print("[cyan]Computing SHA-256 hashes and registering metadata...[/cyan]")
+        registration_items = []
+        for local_path, remote_filename, upload_info in zip(local_paths, remote_filenames, upload_results):
+            sha256_hash = compute_sha256(str(local_path))
+            registration_items.append({
+                "filename": f"{project_slug}/{remote_filename}",
+                "merkle_hash": upload_info.hash,
+                "sha256": sha256_hash,
+                "file_size": upload_info.file_size,
+                "content_type": "application/octet-stream"
+            })
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Project-Slug": project_slug,
+            "Authorization": f"Bearer {cas_token}"
+        }
+
+        try:
+            response = requests.post(
+                register_url,
+                json={"items": registration_items},
+                headers=headers,
+                verify=(not ACCLI_DEBUG)
+            )
+            response.raise_for_status()
+            print("[bold green]✔ Upload and bulk metadata registration completed successfully![/bold green]")
+        except requests.exceptions.HTTPError as e:
+            detail = None
             try:
-                file_url = term_cli_project_service.get_file_url_from_repo(filename, token_pass=token_pass)
-                with requests.get(file_url, stream=True, verify=(not ACCLI_DEBUG)) as r:
-                    r.raise_for_status()
-                    total = int(r.headers.get("Content-Length", 0))
-
-                    task = progress.add_task(
-                        f"[cyan]Downloading {filename}", total=total or None
-                    )
-
-                    with open(partial_file, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                progress.update(task, advance=len(chunk))
-
-                partial_file.rename(final_file)
-                typer.echo(f"✔ Downloaded {final_file}")
-
-            except Exception as e:
-                if partial_file.exists():
-                    partial_file.unlink()
-                typer.echo(f"✖ Failed to download {filename}: {e}", err=True)
+                detail = e.response.json().get("detail")
+            except Exception:
+                pass
+            if detail:
+                print(f"[bold red]ERROR: Bulk metadata registration failed: {detail}[/bold red]")
+            else:
+                print(f"[bold red]ERROR: Bulk metadata registration failed: {e}[/bold red]")
+            raise typer.Exit(1)
+        except Exception as e:
+            print(f"[bold red]ERROR: Bulk metadata registration failed: {e}[/bold red]")
+            raise typer.Exit(1)
 
 
 # --- Mount commands group ---
@@ -389,13 +595,13 @@ def enable_windows_nfs_features():
 
 @mount_app.command("start")
 def mount_start(
-    mount_point: Annotated[Path, typer.Argument(help="Local directory path where the filesystem will be mounted. (On Windows, drive letter like W:)")] = None,
-    project_slug: Annotated[str, typer.Option(help="Unique Accelerator project slug (defaults to active project).")] = None,
-    mode: Annotated[str, typer.Option(help="Mounting mode: 'bucket' (read-write, default) or 'repo' (read-only).")] = "bucket",
-    fuse: Annotated[bool, typer.Option("--fuse", help="Use FUSE backend instead of the default NFS backend.")] = False,
-    overlay: Annotated[bool, typer.Option("--overlay", help="Enable overlay mode (local writes only, remote read-only).")] = False,
-    read_only: Annotated[bool, typer.Option("--read-only", help="Force read-only mount.")] = False,
-    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+    project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug, bucket, or repository ID.")],
+    mount_point: Annotated[Path, typer.Argument(help="Local directory path where the filesystem will be mounted. (Defaults: W: or first available drive on Windows, ~/accelerator/mnt/<project_slug> on Unix/Linux).")] = None,
+    mode: Annotated[str, typer.Option("--mode", "-m", help="Mounting mode: 'bucket' (read-write, default) or 'repo' (read-only).")] = "bucket",
+    fuse: Annotated[bool, typer.Option("--fuse", "-f", help="Use FUSE backend instead of the default NFS backend.")] = False,
+    overlay: Annotated[bool, typer.Option("--overlay", "-o", help="Enable overlay mode (local writes only, remote read-only).")] = False,
+    read_only: Annotated[bool, typer.Option("--read-only", "-r", help="Force read-only mount.")] = False,
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
 ):
     """
     Start a mount as a background daemon.
@@ -406,17 +612,6 @@ def mount_start(
     
     sys_name = platform.system()
     
-    # Resolve project_slug
-    if not project_slug:
-        try:
-            project_slug = get_project_slug()
-        except Exception:
-            pass
-            
-    if not project_slug:
-        print("[bold red]ERROR: Project slug is not set. Please provide --project-slug or set an active project.[/bold red]")
-        raise typer.Exit(1)
-        
     # Get credentials
     try:
         token = get_token()
@@ -426,7 +621,10 @@ def mount_start(
         raise typer.Exit(1)
 
     # Validate mode
-    if mode not in ["bucket", "repo"]:
+    if mode == "repo":
+        print("[bold red]ERROR: 'repo' mode is not implemented yet. Please use 'bucket' mode.[/bold red]")
+        raise typer.Exit(1)
+    elif mode != "bucket":
         print("[bold red]ERROR: Mode must be either 'bucket' or 'repo'.[/bold red]")
         raise typer.Exit(1)
 
@@ -610,7 +808,7 @@ def mount_start(
 @mount_app.command("stop")
 def mount_stop(
     mount_point: Annotated[Path, typer.Argument(help="Mount point of the daemon to stop.")] = None,
-    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
 ):
     """
     Stop a running daemon.
@@ -709,7 +907,7 @@ def mount_stop(
 
 @mount_app.command("status")
 def mount_status(
-    binary_version: Annotated[str, typer.Option("--binary-version", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-pr140",
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
 ):
     """
     List all running mount daemons.

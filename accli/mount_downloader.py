@@ -9,7 +9,7 @@ import typer
 from rich import print
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 
-DEFAULT_VERSION = "v0.6.1-acc-pr140"
+DEFAULT_VERSION = "v0.6.1-acc-p1-pr140"
 BINARY_DIR = Path.home() / ".accli" / "bin"
 
 # Regex to safely validate version strings to prevent URL manipulation or directory traversal
@@ -64,7 +64,7 @@ def is_binary_available(binary_name: str) -> bool:
 def ensure_binaries(version: str = DEFAULT_VERSION, use_fuse: bool = False):
     """Ensures hf-mount and the required backend binary (NFS or FUSE) are downloaded and cached."""
     if not VERSION_REGEX.match(version):
-        raise typer.BadParameter("Invalid version string format. Must be like v0.6.1-acc-pr140")
+        raise typer.BadParameter("Invalid version string format. Must be like v0.6.1-acc-p1-pr140")
 
     sys_name = platform.system()
     if sys_name == "Windows":

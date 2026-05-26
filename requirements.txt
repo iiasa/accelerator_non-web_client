@@ -8,3 +8,4 @@ twine
 build
 rich
 typing-extensions
+hf-xet==1.4.3
