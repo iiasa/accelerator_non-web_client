@@ -1,0 +1,195 @@
+<#
+.SYNOPSIS
+    One-time administrative configuration script to enable Windows Client for NFS and register the Task Scheduler Mount Gateway.
+.DESCRIPTION
+    This script performs the administrative setup required to allow standard users to mount 
+    Accelerator project spaces on Windows over NFS with ZERO UAC prompts.
+    It can be run silently by IT Administrators using Microsoft Intune, Group Policy (GPO), or SCCM.
+.PARAMETER NfsAlreadyEnabled
+    Bypasses enabling NFS Optional features if already enabled.
+.PARAMETER RegAlreadyEnabled
+    Bypasses EnableLinkedConnections registry policy creation if already enabled.
+.NOTES
+    This script is static and fully auditable by Security and Network Administrators.
+#>
+
+param (
+    [switch]$NfsAlreadyEnabled,
+    [switch]$RegAlreadyEnabled
+)
+
+# 1. Enable Windows Client for NFS Optional Features
+if (-not $NfsAlreadyEnabled) {
+    Write-Host "Enabling Windows Client for NFS features..." -ForegroundColor Cyan
+
+    if (Get-Command Enable-WindowsOptionalFeature -ErrorAction SilentlyContinue) {
+        # Split into two separate calls to bypass Windows 11 comma-separated feature parser bug
+        Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly -All -NoRestart | Out-Null
+        Enable-WindowsOptionalFeature -Online -FeatureName ClientForNFS-Infrastructure -All -NoRestart | Out-Null
+    } elseif (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
+        # Fallback for Windows Server OS
+        Install-WindowsFeature -Name NFS-Client | Out-Null
+    }
+    Write-Host "[OK] Enabled Client for NFS features." -ForegroundColor Green
+} else {
+    Write-Host "[OK] Client for NFS features already enabled." -ForegroundColor Green
+}
+
+# 2. Add Registry value for Linked Connections
+# Allows mapped network drives to be shared between elevated and standard sessions under the same user log-in.
+if (-not $RegAlreadyEnabled) {
+    Write-Host "Configuring EnableLinkedConnections registry policy..." -ForegroundColor Cyan
+
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+    if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $regPath -Name "EnableLinkedConnections" -Value 1 -PropertyType DWORD -Force | Out-Null
+    Write-Host "[OK] Registry value configured." -ForegroundColor Green
+} else {
+    Write-Host "[OK] Registry value already configured." -ForegroundColor Green
+}
+
+# 3. Create public ProgramData folder and configure permissions for Authenticated Users
+Write-Host "Initializing public accli configuration directory..." -ForegroundColor Cyan
+$configDir = "C:\ProgramData\accli"
+if (-not (Test-Path $configDir)) {
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+}
+
+try {
+    $acl = Get-Acl $configDir
+    # Grant Modify (Read, Write, Execute, Delete) to all Authenticated Users so non-admin users can write the mount_config.json
+    $ar = New-Object System.Security.AccessControl.FileSystemAccessRule("Authenticated Users", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+    $acl.SetAccessRule($ar)
+    Set-Acl $configDir $acl
+    Write-Host "[OK] Directory permissions configured." -ForegroundColor Green
+} catch {
+    Write-Warning "Could not configure ProgramData permissions. Standalone non-admin users might not be able to write configuration."
+}
+
+# 4. Write static run-mount-helper.ps1 static helper
+Write-Host "Registering run-mount-helper script..." -ForegroundColor Cyan
+$helperScript = @'
+$configPath = "C:\ProgramData\accli\mount_config.json"
+if (-not (Test-Path $configPath)) {
+    Write-Error "Config file not found at $configPath."
+    exit 1
+}
+
+try {
+    $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+} catch {
+    Write-Error "Failed to parse $configPath."
+    exit 1
+}
+
+# Construct environment
+$env:PATH = "C:\Windows\System32\downlevel;" + $env:PATH
+$env:ACCELERATOR_MOUNT = "1"
+$env:ACC_ENDPOINT = $cfg.server_url
+$env:ACC_CAS_ENDPOINT = "$($cfg.server_url.TrimEnd('/'))/api/xet-cas"
+$env:ACC_TOKEN = $cfg.token
+if ($cfg.skip_auto_mount) {
+    $env:HF_MOUNT_SKIP_AUTO_MOUNT = "1"
+}
+
+# Construct arguments
+$mountArgs = @(
+    "--token-file", $cfg.db_path,
+    "--hub-endpoint", $cfg.server_url,
+    $cfg.mode,
+    $cfg.project_slug,
+    $cfg.mount_point
+)
+
+if ($cfg.overlay) { $mountArgs += "--overlay" }
+if ($cfg.read_only) { $mountArgs += "--read-only" }
+
+# Prepare background logger
+$logFile = "C:\ProgramData\accli\mount.log"
+$errFile = "C:\ProgramData\accli\mount_err.log"
+try {
+    # Run the background daemon process elevated (since task runs as SYSTEM)
+    & $cfg.hf_mount_bin @mountArgs > $logFile 2> $errFile
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
+        Add-Content -Path $errFile -Value "Process exited with code `$LASTEXITCODE"
+        exit `$LASTEXITCODE
+    }
+} catch {
+    Write-Error "Failed to execute hf-mount-nfs.exe."
+    exit 1
+}
+'@
+
+$helperScriptPath = "C:\ProgramData\accli\run-mount-helper.ps1"
+Set-Content -Path $helperScriptPath -Value $helperScript -Encoding UTF8
+Write-Host "[OK] Mount helper script registered." -ForegroundColor Green
+
+# 5. Register the Scheduled Task (accli-mount-nfs)
+Write-Host "Registering accli-mount-nfs Scheduled Task..." -ForegroundColor Cyan
+$taskName = "accli-mount-nfs"
+
+# Helper block executing PowerShell in Task Action
+$psActionPath = "powershell.exe"
+$psActionArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helperScriptPath`""
+
+if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
+    try {
+        $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psActionArgs
+        $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        
+        # Unregister task if already exists to update
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+        
+        Write-Host "[OK] Scheduled Task registered successfully." -ForegroundColor Green
+    } catch {
+        # Fallback to schtasks.exe if cmdlet fails
+        schtasks /delete /tn $taskName /f 2> $null | Out-Null
+        schtasks /create /tn $taskName /tr "$psActionPath $psActionArgs" /sc ONCE /sd "2026/01/01" /st "00:00" /ru "SYSTEM" /rl "HIGHEST" /f | Out-Null
+        Write-Host "[OK] Scheduled Task registered successfully." -ForegroundColor Green
+    }
+} else {
+    # Legacy fallback
+    schtasks /delete /tn $taskName /f 2> $null | Out-Null
+    schtasks /create /tn $taskName /tr "$psActionPath $psActionArgs" /sc ONCE /sd "2026/01/01" /st "00:00" /ru "SYSTEM" /rl "HIGHEST" /f | Out-Null
+    Write-Host "[OK] Scheduled Task registered successfully." -ForegroundColor Green
+}
+
+# Grant Authenticated Users permission to read, query, and run the task file
+$taskFile = "C:\Windows\System32\Tasks\accli-mount-nfs"
+if (Test-Path $taskFile) {
+    try {
+        $acl = Get-Acl $taskFile
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("Authenticated Users", "ReadAndExecute", "Allow")
+        $acl.AddAccessRule($rule)
+        Set-Acl $taskFile $acl
+        Write-Host "[OK] Task file permissions configured (Access allowed for Authenticated Users)." -ForegroundColor Green
+    } catch {
+        Write-Warning "Could not configure task file permissions. Standard users might not be able to trigger the task without UAC."
+    }
+}
+
+# Grant Authenticated Users permission to query and trigger the Task Scheduler Service task object itself via COM SDDL
+try {
+    $Scheduler = New-Object -ComObject "Schedule.Service"
+    $Scheduler.Connect()
+    $TaskObject = $Scheduler.GetFolder("\").GetTask("accli-mount-nfs")
+    $SDDL = $TaskObject.GetSecurityDescriptor(0xF)
+    
+    # (A;;GRGX;;;AU) grants Read (GR) and Execute (GX) to Authenticated Users (AU)
+    if ($SDDL -notmatch 'A;;0x1200a9;;;AU' -and $SDDL -notmatch 'A;;GRGX;;;AU') {
+        $SDDL = $SDDL + '(A;;GRGX;;;AU)'
+        $TaskObject.SetSecurityDescriptor($SDDL, 0)
+        Write-Host "[OK] Task Scheduler COM Service permissions configured for Authenticated Users." -ForegroundColor Green
+    } else {
+        Write-Host "[OK] Task Scheduler COM Service permissions already configured." -ForegroundColor Green
+    }
+} catch {
+    Write-Warning "Could not configure Task Scheduler COM permissions: $_"
+}
+
+Write-Host "Windows NFS Client Task Scheduler Gateway Setup Completed Successfully!" -ForegroundColor Green
+Write-Host "⚠ Note: A Windows sign-out/sign-in or system restart is required for changes to take effect." -ForegroundColor Yellow

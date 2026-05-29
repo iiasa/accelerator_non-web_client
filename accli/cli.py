@@ -4,6 +4,7 @@ import os
 import re
 import warnings
 import hashlib
+import json
 import hf_xet
 from contextlib import contextmanager
 from pathlib import Path
@@ -541,57 +542,142 @@ def find_available_windows_drive(preferred: str = "W") -> str:
 
 
 def enable_windows_nfs_features():
-    """Automatically check and enable Windows Client for NFS optional features if needed."""
+    """Automatically check and enable Windows Client for NFS features, registry key, and Task Scheduler gateway if needed."""
     import subprocess
-    import platform
+    import tempfile
+    import os
     
-    print("[cyan]Checking if Windows Client for NFS features are enabled...[/cyan]")
+    print("[cyan]Auditing Windows Client for NFS system configuration...[/cyan]")
+    
+    # 1. Non-elevated audit queries for Features, Registry, and Task Scheduler Gateway
+    check_script = (
+        "$nfsEnabled = Test-Path 'C:\\Windows\\System32\\mount.exe'\n"
+        "\n"
+        "$regEnabled = $false\n"
+        "$regPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'\n"
+        "if (Test-Path $regPath) {\n"
+        "    $val = Get-ItemProperty -Path $regPath -Name 'EnableLinkedConnections' -ErrorAction SilentlyContinue\n"
+        "    if ($val -and $val.EnableLinkedConnections -eq 1) { $regEnabled = $true }\n"
+        "}\n"
+        "\n"
+        "$taskEnabled = $false\n"
+        "if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {\n"
+        "    $t = Get-ScheduledTask -TaskName 'accli-mount-nfs' -ErrorAction SilentlyContinue\n"
+        "    if ($t) { $taskEnabled = $true }\n"
+        "} else {\n"
+        "    $query = schtasks /query /tn 'accli-mount-nfs' 2> $null\n"
+        "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
+        "}\n"
+        "\n"
+        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;TASK:$taskEnabled\""
+    )
+    
     check_cmd = [
         "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-        "Get-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly"
+        check_script
     ]
+    
+    nfs_ok = False
+    reg_ok = False
+    task_ok = False
+    
     try:
         res = subprocess.run(check_cmd, capture_output=True, text=True, check=True)
-        if "State : Enabled" in res.stdout or "State: Enabled" in res.stdout:
-            print("[bold green]✔ ServicesForNFS-ClientOnly is already enabled.[/bold green]")
-            return
-    except Exception:
-        pass
+        output = res.stdout.strip()
+        for part in output.split(';'):
+            if part.startswith("NFS:"):
+                nfs_ok = (part.split(':')[1].lower() == 'true')
+            elif part.startswith("REG:"):
+                reg_ok = (part.split(':')[1].lower() == 'true')
+            elif part.startswith("TASK:"):
+                task_ok = (part.split(':')[1].lower() == 'true')
+    except Exception as e:
+        print(f"[yellow]Warning: Could not audit current Windows NFS settings: {e}[/yellow]")
+    
+    if nfs_ok and reg_ok and task_ok:
+        print("[bold green][OK] Windows NFS client features, registry policies, and Task Scheduler gateway are already configured.[/bold green]")
+        return
+        
+    print("[yellow]Administrative setup is required to configure the Windows NFS mount gateway.[/yellow]")
+    print("[italic]A UAC administrator elevation prompt will appear shortly. Please approve it...[/italic]")
+    
+    # 2. Locate and load the static setup-nfs.ps1 script (Single Source of Truth)
+    import sys
+    from pathlib import Path
+    
+    script_dir = Path(__file__).parent
+    if hasattr(sys, "_MEIPASS"):
+        setup_script_path = Path(sys._MEIPASS) / "setup-nfs.ps1"
+    else:
+        setup_script_path = script_dir / "setup-nfs.ps1"
 
-    print("[yellow]Windows Client for NFS features are not enabled. Attempting automatic enablement...[/yellow]")
-    print("[italic]Note: This requires Administrator/elevated privileges.[/italic]")
-    
-    enable_client_cmd = [
-        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-        "Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly,ClientForNFS-Infrastructure -All -NoRestart"
-    ]
-    
-    enable_server_cmd = [
-        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-        "Install-WindowsFeature -Name NFS-Client"
-    ]
+    if not setup_script_path.is_file():
+        # Fallback to dev workspace relative path just in case
+        dev_path = (script_dir / ".." / "accli" / "setup-nfs.ps1").resolve()
+        if dev_path.is_file():
+            setup_script_path = dev_path
+        else:
+            print("[bold red]ERROR: Windows NFS Setup script 'setup-nfs.ps1' not found inside package.[/bold red]")
+            raise typer.Exit(1)
+
+    try:
+        setup_script_content = setup_script_path.read_text(encoding="utf-8")
+    except Exception as e:
+        print(f"[bold red]ERROR: Failed to read setup-nfs.ps1: {e}[/bold red]")
+        raise typer.Exit(1)
+        
+    temp_dir = tempfile.gettempdir()
+    temp_file_path = os.path.join(temp_dir, "accli_nfs_setup.ps1")
     
     try:
-        result = subprocess.run(enable_client_cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            print("[bold green]✔ Successfully enabled Windows NFS Client features.[/bold green]")
-            return
-        else:
-            result_server = subprocess.run(enable_server_cmd, capture_output=True, text=True)
-            if result_server.returncode == 0:
-                print("[bold green]✔ Successfully installed Windows Server NFS-Client feature.[/bold green]")
-                return
-            else:
-                print("[bold red]✖ Failed to enable Windows NFS Client features automatically.[/bold red]")
-                if result.stderr:
-                    print(f"[red]{result.stderr.strip()}[/red]")
-                if result_server.stderr:
-                    print(f"[red]{result_server.stderr.strip()}[/red]")
-                print("[yellow]Please run the following command manually in an elevated/Administrator PowerShell:[/yellow]")
-                print("  Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly,ClientForNFS-Infrastructure -All")
+        with open(temp_file_path, "w", encoding="utf-8") as f:
+            f.write(setup_script_content)
+            
+        # Build arguments for Start-Process to pass state as parameters
+        ps_params = []
+        if nfs_ok:
+            ps_params.append("-NfsAlreadyEnabled")
+        if reg_ok:
+            ps_params.append("-RegAlreadyEnabled")
+        
+        params_str = " ".join(ps_params)
+        elevate_cmd = [
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+            f"Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"{temp_file_path}\" {params_str}' -Verb RunAs -Wait"
+        ]
+        
+        result = subprocess.run(elevate_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print("[bold red][ERROR] Administrative configuration failed or UAC prompt was denied.[/bold red]")
+            if result.stderr:
+                print(f"[red]{result.stderr.strip()}[/red]")
+            raise typer.Exit(1)
+            
+        print("[bold green][OK] Elevated administrative setup completed successfully![/bold green]")
+        
+        # Reboot advisory for registry keys or NFS features
+        if not reg_ok or not nfs_ok:
+            print("")
+            print("[bold yellow][WARNING] IMPORTANT: A Windows system restart is required for the new NFS Client features and registry policies to take effect.[/bold yellow]")
+            print("[bold yellow]Please restart your computer, then run 'accli mount start' again to mount your drive passwordlessly![/bold yellow]")
+            print("")
+            raise typer.Exit(0)
+            
     except Exception as e:
-        print(f"[bold red]ERROR: Could not execute enablement commands: {e}[/bold red]")
-        print("[yellow]Please make sure you are running as Administrator and try running the command manually.[/yellow]")
+        if isinstance(e, typer.Exit):
+            raise e
+        print(f"[bold red]ERROR: Administrative configuration could not be executed: {e}[/bold red]")
+        print("[yellow]Please run the following commands manually in an elevated/Administrator PowerShell window:[/yellow]")
+        print("  Enable-WindowsOptionalFeature -Online -FeatureName ServicesForNFS-ClientOnly -All")
+        print("  Enable-WindowsOptionalFeature -Online -FeatureName ClientForNFS-Infrastructure -All")
+        print("  reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v EnableLinkedConnections /t REG_DWORD /d 1 /f")
+        raise typer.Exit(1)
+    finally:
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass
 
 
 @mount_app.command("start")
@@ -723,37 +809,171 @@ def mount_start(
 
         import subprocess
         try:
-            # Spawn decoupled background process on Windows using DETACHED_PROCESS creation flag (0x00000008)
-            creationflags = 0x00000008
-            process = subprocess.Popen(
-                args,
-                env=env,
-                creationflags=creationflags,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                close_fds=True
-            )
-            
-            # Startup verification (1-second boot poll)
-            import time
-            time.sleep(1.0)
-            if process.poll() is not None:
-                # Process has already terminated!
-                print(f"[bold red]✖ Failed to start Windows NFS mount process (exit code {process.returncode}).[/bold red]")
+            import ctypes
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            is_admin = False
+
+        # Try to use Windows Task Scheduler to bypass UAC if registered
+        has_task = False
+        if not is_admin:
+            try:
+                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
+                if task_check.returncode == 0:
+                    has_task = True
+            except Exception:
+                pass
+
+        if has_task:
+            print("[cyan]Triggering elevated NFS mount via Task Scheduler (no UAC prompt)...[/cyan]")
+            config_dir = Path("C:/ProgramData/accli")
+            try:
+                config_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Copy binary to C:\ProgramData\accli to avoid profile execution policies for SYSTEM user
+                target_bin = config_dir / "hf-mount-nfs.exe"
                 try:
-                    if log_file_path.is_file():
-                        with open(log_file_path, "r", encoding="utf-8") as lf:
-                            lines = lf.readlines()
-                            last_lines = "".join(lines[-10:])
-                            print("[red]Recent log output:[/red]")
-                            print(f"[dim]{last_lines.strip()}[/dim]")
+                    if not target_bin.is_file() or target_bin.stat().st_size != hf_mount_bin.stat().st_size:
+                        import shutil
+                        shutil.copy2(hf_mount_bin, target_bin)
                 except Exception:
                     pass
-                print(f"[yellow]Please check the log file at {log_file_path} for more details.[/yellow]")
-                raise typer.Exit(1)
                 
-            print(f"[bold green]✔ NFS mount process spawned successfully (PID: {process.pid}).[/bold green]")
-            print(f"[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
+                config_data = {
+                    "token": token,
+                    "server_url": server_url,
+                    "mode": mode,
+                    "project_slug": project_slug,
+                    "mount_point": str(mount_point_abs),
+                    "hf_mount_bin": str(target_bin),
+                    "db_path": db_path,
+                    "overlay": overlay,
+                    "read_only": read_only,
+                    "skip_auto_mount": True  # Force daemon only, we will map the drive letter in the user session!
+                }
+                config_file = config_dir / "mount_config.json"
+                config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
+                
+                run_res = subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
+                if run_res.returncode == 0:
+                    import time
+                    print("[cyan]Waiting for elevated NFS daemon to initialize...[/cyan]")
+                    time.sleep(2.0)
+                    
+                    # Map the network drive in the CURRENT user session (so it is visible in Explorer)
+                    mount_cmd = [
+                        "C:\\Windows\\System32\\mount.exe",
+                        "-o", "nolock,anon,mtype=hard,rsize=32,wsize=32,timeout=60",
+                        "\\\\127.0.0.1\\!",
+                        str(mount_point_abs)
+                    ]
+                    mount_res = subprocess.run(mount_cmd, capture_output=True, text=True)
+                    if mount_res.returncode == 0:
+                        print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
+                        print("[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
+                        return
+                    else:
+                        print(f"[bold red][ERROR] NFS daemon started, but failed to map drive {mount_point_abs} in user session.[/bold red]")
+                        if mount_res.stderr:
+                            print(f"[red]{mount_res.stderr.strip()}[/red]")
+                        print("[yellow]Tip: Make sure Windows NFS client feature was fully enabled and the PC was restarted.[/yellow]")
+                        raise typer.Exit(1)
+                else:
+                    print("[bold red][ERROR] Failed to execute Scheduled Task 'accli-mount-nfs'.[/bold red]")
+                    if run_res.stderr:
+                        print(f"[red]{run_res.stderr.strip()}[/red]")
+                    print("[yellow]Falling back to UAC elevation...[/yellow]")
+                    has_task = False
+            except Exception as e:
+                print(f"[bold red]ERROR: Task Scheduler trigger failed: {e}[/bold red]")
+                print("[yellow]Falling back to UAC elevation...[/yellow]")
+                has_task = False
+
+        try:
+            if is_admin:
+                # Already running as Administrator - spawn decoupled background process directly
+                creationflags = 0x00000008
+                process = subprocess.Popen(
+                    args,
+                    env=env,
+                    creationflags=creationflags,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    close_fds=True
+                )
+                
+                # Startup verification (1-second boot poll)
+                import time
+                time.sleep(1.0)
+                if process.poll() is not None:
+                    # Process has already terminated!
+                    print(f"[bold red][ERROR] Failed to start Windows NFS mount process (exit code {process.returncode}).[/bold red]")
+                    try:
+                        if log_file_path.is_file():
+                            with open(log_file_path, "r", encoding="utf-8") as lf:
+                                lines = lf.readlines()
+                                last_lines = "".join(lines[-10:])
+                                print("[red]Recent log output:[/red]")
+                                print(f"[dim]{last_lines.strip()}[/dim]")
+                    except Exception:
+                        pass
+                    print(f"[yellow]Please check the log file at {log_file_path} for more details.[/yellow]")
+                    raise typer.Exit(1)
+                    
+                print(f"[bold green][OK] NFS mount process spawned successfully (PID: {process.pid}).[/bold green]")
+                print(f"[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
+            else:
+                # Running as standard user and Task Scheduler is either not registered or failed
+                print("[yellow]Notice: Task Scheduler gateway is not active. Falling back to dynamic UAC elevation...[/yellow]")
+                print("[italic]A UAC administrator elevation prompt will appear shortly...[/italic]")
+                
+                # Formulate environment setup strings for the PowerShell subprocess
+                env_setup = ""
+                for k in ["ACCELERATOR_MOUNT", "ACC_ENDPOINT", "ACC_CAS_ENDPOINT", "ACC_TOKEN"]:
+                    if k in env:
+                        val = env[k].replace("'", "''")
+                        env_setup += f"$env:{k}='{val}'; "
+                
+                # Force skip_auto_mount for the elevated daemon
+                env_setup += "$env:HF_MOUNT_SKIP_AUTO_MOUNT='1'; "
+                
+                # Construct powershell command line with single quotes escaped
+                ps_args_list = ", ".join([f"'{x.replace('\'', '\'\'')}'" for x in args[1:]])
+                ps_command = f"{env_setup}Start-Process -FilePath '{str(hf_mount_bin)}' -ArgumentList @({ps_args_list}) -Verb RunAs"
+                
+                ps_args = [
+                    "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                    ps_command
+                ]
+                
+                elevate_res = subprocess.run(ps_args, capture_output=True, text=True)
+                if elevate_res.returncode != 0:
+                    print("[bold red][ERROR] Administrative elevation failed or was denied.[/bold red]")
+                    print("[yellow]Tip: Please request your IT Administrator to run 'setup-nfs.ps1' to configure the passwordless Task Scheduler gateway.[/yellow]")
+                    if elevate_res.stderr:
+                        print(f"[red]{elevate_res.stderr.strip()}[/red]")
+                    raise typer.Exit(1)
+                    
+                print("[cyan]Waiting for elevated NFS daemon to initialize...[/cyan]")
+                import time
+                time.sleep(2.0)
+                
+                # Map the network drive in the CURRENT user session (so it is visible in Explorer)
+                mount_cmd = [
+                    "C:\\Windows\\System32\\mount.exe",
+                    "-o", "nolock,anon,mtype=hard,rsize=32,wsize=32,timeout=60",
+                    "\\\\127.0.0.1\\!",
+                    str(mount_point_abs)
+                ]
+                mount_res = subprocess.run(mount_cmd, capture_output=True, text=True)
+                if mount_res.returncode == 0:
+                    print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
+                    print("[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
+                else:
+                    print(f"[bold red][ERROR] NFS daemon spawned elevated, but failed to map drive {mount_point_abs} in user session.[/bold red]")
+                    if mount_res.stderr:
+                        print(f"[red]{mount_res.stderr.strip()}[/red]")
+                    raise typer.Exit(1)
         except Exception as e:
             if isinstance(e, typer.Exit):
                 raise e
@@ -791,11 +1011,11 @@ def mount_start(
         try:
             result = subprocess.run(args, env=env, capture_output=True, text=True)
             if result.returncode == 0:
-                print(f"[bold green]✔ Mount started successfully![/bold green]")
+                print(f"[bold green][OK] Mount started successfully![/bold green]")
                 if result.stdout:
                     print(result.stdout)
             else:
-                print(f"[bold red]✖ Failed to start mount (exit code {result.returncode}):[/bold red]")
+                print(f"[bold red][ERROR] Failed to start mount (exit code {result.returncode}):[/bold red]")
                 if result.stderr:
                     print(f"[red]{result.stderr}[/red]")
                 if result.stdout:
@@ -846,7 +1066,13 @@ def mount_stop(
         import subprocess
         
         # 1. Run Windows standard umount command
-        res = subprocess.run(["umount", "-f", str(mount_point_abs)], capture_output=True, text=True)
+        res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", str(mount_point_abs)], capture_output=True, text=True)
+        
+        # 2. Stop the scheduled task (which terminates the elevated daemon background process tree)
+        try:
+            subprocess.run(["schtasks", "/end", "/tn", "accli-mount-nfs"], capture_output=True)
+        except Exception:
+            pass
         
         # 2. Selective Kill: Target and terminate only the specific process using the target mount point using a PowerShell command-line filter
         try:
@@ -863,7 +1089,7 @@ def mount_stop(
             subprocess.run(["taskkill", "/f", "/im", "hf-mount-nfs.exe"], capture_output=True)
         
         if res.returncode == 0 or "successfully" in res.stdout or "successfully" in res.stderr:
-            print("[bold green]✔ Mount stopped successfully.[/bold green]")
+            print("[bold green][OK] Mount stopped successfully.[/bold green]")
         else:
             print("[yellow]Attempted to unmount. Please verify drive status manually using 'umount'.[/yellow]")
             if res.stderr:
@@ -895,9 +1121,9 @@ def mount_stop(
     try:
         result = subprocess.run(args, capture_output=True, text=True)
         if result.returncode == 0:
-            print(f"[bold green]✔ Mount stopped successfully.[/bold green]")
+            print(f"[bold green][OK] Mount stopped successfully.[/bold green]")
         else:
-            print(f"[bold red]✖ Failed to stop mount (exit code {result.returncode}):[/bold red]")
+            print(f"[bold red][ERROR] Failed to stop mount (exit code {result.returncode}):[/bold red]")
             if result.stderr:
                 print(f"[red]{result.stderr}[/red]")
             raise typer.Exit(result.returncode)
@@ -967,7 +1193,7 @@ def mount_status(
                 print("[bold cyan]Active Mounts:[/bold cyan]")
                 print(stdout)
         else:
-            print(f"[bold red]✖ Failed to retrieve mount status (exit code {result.returncode}):[/bold red]")
+            print(f"[bold red][ERROR] Failed to retrieve mount status (exit code {result.returncode}):[/bold red]")
             if result.stderr:
                 print(f"[red]{result.stderr}[/red]")
             raise typer.Exit(result.returncode)
