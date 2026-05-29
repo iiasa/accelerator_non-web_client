@@ -20,6 +20,7 @@ from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, T
 from typing_extensions import Annotated
 
 from ._version import VERSION
+from . import mount_downloader
 
 warnings.filterwarnings('ignore')
 
@@ -601,7 +602,7 @@ def mount_start(
     fuse: Annotated[bool, typer.Option("--fuse", "-f", help="Use FUSE backend instead of the default NFS backend.")] = False,
     overlay: Annotated[bool, typer.Option("--overlay", "-o", help="Enable overlay mode (local writes only, remote read-only).")] = False,
     read_only: Annotated[bool, typer.Option("--read-only", "-r", help="Force read-only mount.")] = False,
-    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = mount_downloader.DEFAULT_VERSION,
 ):
     """
     Start a mount as a background daemon.
@@ -808,7 +809,7 @@ def mount_start(
 @mount_app.command("stop")
 def mount_stop(
     mount_point: Annotated[Path, typer.Argument(help="Mount point of the daemon to stop.")] = None,
-    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = mount_downloader.DEFAULT_VERSION,
 ):
     """
     Stop a running daemon.
@@ -907,7 +908,7 @@ def mount_stop(
 
 @mount_app.command("status")
 def mount_status(
-    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = "v0.6.1-acc-p1-pr140",
+    binary_version: Annotated[str, typer.Option("--binary-version", "-b", help="Specific hf-mount release version to download.")] = mount_downloader.DEFAULT_VERSION,
 ):
     """
     List all running mount daemons.

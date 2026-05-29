@@ -45,14 +45,29 @@ def get_binary_path(binary_name: str) -> Path:
         return BINARY_DIR / f"{binary_name}.exe"
     return BINARY_DIR / binary_name
 
-def is_binary_available(binary_name: str) -> bool:
+def is_binary_available(binary_name: str, version: str = DEFAULT_VERSION) -> bool:
     """Checks if a binary is available in the custom accli cache or the system PATH."""
     local_path = get_binary_path(binary_name)
+    version_file = BINARY_DIR / ".version"
+    
     if local_path.is_file():
-        if platform.system() == "Windows":
-            return True
-        elif os.access(local_path, os.X_OK):
-            return True
+        cached_version = None
+        if version_file.is_file():
+            try:
+                cached_version = version_file.read_text().strip()
+            except Exception:
+                pass
+        
+        if cached_version == version:
+            if platform.system() == "Windows":
+                return True
+            elif os.access(local_path, os.X_OK):
+                return True
+        else:
+            try:
+                local_path.unlink()
+            except Exception:
+                pass
     
     # Also check if it exists in system PATH
     system_path = shutil.which(binary_name)
@@ -77,7 +92,7 @@ def ensure_binaries(version: str = DEFAULT_VERSION, use_fuse: bool = False):
             required_binaries.append("hf-mount-nfs")
 
     # Filter out already available binaries
-    to_download = [bin_name for bin_name in required_binaries if not is_binary_available(bin_name)]
+    to_download = [bin_name for bin_name in required_binaries if not is_binary_available(bin_name, version)]
 
     if not to_download:
         return
@@ -132,3 +147,10 @@ def ensure_binaries(version: str = DEFAULT_VERSION, use_fuse: bool = False):
                 part_path.unlink()
             print(f"[bold red]✖ Failed to download {bin_name}: {e}[/bold red]")
             raise typer.Exit(1)
+
+    # After all downloads successfully complete, update the cached version file
+    version_file = BINARY_DIR / ".version"
+    try:
+        version_file.write_text(version)
+    except Exception:
+        pass
