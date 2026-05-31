@@ -833,9 +833,27 @@ def mount_start(
                 # Copy binary to C:\ProgramData\accli to avoid profile execution policies for SYSTEM user
                 target_bin = config_dir / "hf-mount-nfs.exe"
                 try:
+                    import shutil
+                    import sys
                     if not target_bin.is_file() or target_bin.stat().st_size != hf_mount_bin.stat().st_size:
-                        import shutil
                         shutil.copy2(hf_mount_bin, target_bin)
+                    
+                    # Copy MSVC runtime DLLs to ProgramData so SYSTEM user can find them when running as a background task
+                    base_prefix = Path(sys.base_exec_prefix)
+                    for dll_name in ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"]:
+                        dll_path = base_prefix / dll_name
+                        if not dll_path.is_file():
+                            found = shutil.which(dll_name)
+                            if found:
+                                dll_path = Path(found)
+                        
+                        target_dll = config_dir / dll_name
+                        if dll_path.is_file():
+                            if not target_dll.is_file() or target_dll.stat().st_size != dll_path.stat().st_size:
+                                try:
+                                    shutil.copy2(dll_path, target_dll)
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
                 
@@ -1040,11 +1058,45 @@ def mount_stop(
     
     sys_name = platform.system()
     
-    # Resolve mount point if None
-    if mount_point is None:
-        if sys_name == "Windows":
+    # Resolve mount point
+    if sys_name == "Windows":
+        if mount_point is None:
+            config_file = Path("C:/ProgramData/accli/mount_config.json")
             mount_point_abs = Path("W:")
+            if config_file.is_file():
+                try:
+                    import json
+                    cfg = json.loads(config_file.read_text(encoding="utf-8"))
+                    if "mount_point" in cfg:
+                        mount_point_abs = Path(cfg["mount_point"])
+                except Exception:
+                    pass
+            print(f"[cyan]No mount point specified. Selected active mount point from config: [bold white]{mount_point_abs}[/bold white][/cyan]")
         else:
+            mount_point_str = str(mount_point)
+            if not re.match(r"^[a-zA-Z]:/?\\?$", mount_point_str):
+                print(f"[bold red]ERROR: Invalid Windows drive letter provided: '{mount_point_str}'.[/bold red]")
+                print(f"[yellow]On Windows, the mount point must be a valid drive letter (e.g., 'W:').[/yellow]")
+                raise typer.Exit(1)
+            
+            mount_point_abs = Path(mount_point_str[0].upper() + ":")
+            
+            # Validate against active config to prevent stopping the wrong mount
+            config_file = Path("C:/ProgramData/accli/mount_config.json")
+            if config_file.is_file():
+                try:
+                    import json
+                    cfg = json.loads(config_file.read_text(encoding="utf-8"))
+                    if "mount_point" in cfg:
+                        active_mount = Path(cfg["mount_point"])
+                        if str(mount_point_abs).upper() != str(active_mount).upper():
+                            print(f"[bold red]ERROR: You requested to stop '{mount_point_abs}', but the active daemon is mounted at '{active_mount}'.[/bold red]")
+                            print(f"[yellow]To stop the server, please run: accli mount stop {active_mount}[/yellow]")
+                            raise typer.Exit(1)
+                except Exception:
+                    pass
+    else:
+        if mount_point is None:
             try:
                 project_slug = get_project_slug()
             except Exception:
@@ -1054,10 +1106,6 @@ def mount_stop(
                 raise typer.Exit(1)
             mount_point_abs = Path.home() / "accelerator" / "mnt" / project_slug
             print(f"[cyan]No mount point specified. Selected default directory: [bold white]{mount_point_abs}[/bold white][/cyan]")
-    else:
-        mount_point_str = str(mount_point)
-        if sys_name == "Windows" and re.match(r"^[a-zA-Z]:?\\?$", mount_point_str):
-            mount_point_abs = Path(mount_point_str[0].upper() + ":")
         else:
             mount_point_abs = mount_point.resolve()
 
