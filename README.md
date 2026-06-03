@@ -1,4 +1,3 @@
-
 # Accelerator Terminal Client and Python API
 
 This package provides:
@@ -6,7 +5,8 @@ This package provides:
 - A **command-line client** (`accli`) for interacting with the **Accelerator**.
 - A **Python API** via the `accli` package.
 
-Both interfaces communicate with the Accelerator’s REST API, implemented in the [Control Services Backend](https://github.com/iiasa/control_services_backend).
+Both interfaces communicate with the Accelerator’s REST API, implemented in
+the [Control Services Backend](https://github.com/iiasa/control_services_backend).
 
 ---
 
@@ -14,10 +14,11 @@ Both interfaces communicate with the Accelerator’s REST API, implemented in th
 
 This client uses **device authentication** via Auth0.
 
-- **OAuth Flow**: [Device Authorization Flow](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow)  
-- **Token Validity**: 7 days  
-- **Access Control**: Role-Based Access Control (RBAC) with stateless tokens  
-- **Grants**: Limited and scoped  
+- **OAuth Flow
+  **: [Device Authorization Flow](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow)
+- **Token Validity**: 7 days
+- **Access Control**: Role-Based Access Control (RBAC) with stateless tokens
+- **Grants**: Limited and scoped
 
 ---
 
@@ -34,11 +35,13 @@ This client uses **device authentication** via Auth0.
 No Python install required. Run the appropriate command for your system:
 
 **Linux / macOS:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iiasa/accli/master/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 irm https://raw.githubusercontent.com/iiasa/accli/master/scripts/install.ps1 | iex
 ```
@@ -88,6 +91,17 @@ Usage: accli [OPTIONS] COMMAND [ARGS]...
 ---
 
 ## 👩‍💻 Developer Guide
+
+### Handling self-signed certificates
+
+1. Copy and paste certificates from `<control_services_backend>/certs/public.crt` as
+   `./certs/dev-backend.crt` and `<accelerator_service>/minio_certs/public.crt` as
+   `./certs/dev-minio-ca.crt`.
+2. Run
+   ```
+   cd scripts
+   import_certs_certutil.ps1
+   ```
 
 ### 🛠 Build & Upload
 
