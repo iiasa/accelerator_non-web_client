@@ -956,7 +956,7 @@ def mount_start(
                 env_setup += "$env:HF_MOUNT_SKIP_AUTO_MOUNT='1'; "
                 
                 # Construct powershell command line with single quotes escaped
-                ps_args_list = ", ".join([f"'{x.replace('\'', '\'\'')}'" for x in args[1:]])
+                ps_args_list = ", ".join(["'" + x.replace("'", "''") + "'" for x in args[1:]])
                 ps_command = f"{env_setup}Start-Process -FilePath '{str(hf_mount_bin)}' -ArgumentList @({ps_args_list}) -Verb RunAs"
                 
                 ps_args = [
