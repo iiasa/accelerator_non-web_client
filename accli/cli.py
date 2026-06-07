@@ -1013,6 +1013,7 @@ def mount_start(
         args = [str(hf_mount_bin), "start"]
         if fuse:
             args.append("--fuse")
+            args.append("--advanced-writes")
         
         db_path = get_db_path()
         args.extend(["--token-file", db_path])
