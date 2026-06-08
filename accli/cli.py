@@ -560,6 +560,14 @@ def enable_windows_nfs_features():
         "    if ($val -and $val.EnableLinkedConnections -eq 1) { $regEnabled = $true }\n"
         "}\n"
         "\n"
+        "$anonEnabled = $false\n"
+        "$anonPath = 'HKLM:\\SOFTWARE\\Microsoft\\ClientForNFS\\CurrentVersion\\Default'\n"
+        "if (Test-Path $anonPath) {\n"
+        "    $valUid = Get-ItemProperty -Path $anonPath -Name 'AnonymousUid' -ErrorAction SilentlyContinue\n"
+        "    $valGid = Get-ItemProperty -Path $anonPath -Name 'AnonymousGid' -ErrorAction SilentlyContinue\n"
+        "    if ($null -ne $valUid -and $valUid.AnonymousUid -eq 0 -and $null -ne $valGid -and $valGid.AnonymousGid -eq 0) { $anonEnabled = $true }\n"
+        "}\n"
+        "\n"
         "$taskEnabled = $false\n"
         "if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {\n"
         "    $t = Get-ScheduledTask -TaskName 'accli-mount-nfs' -ErrorAction SilentlyContinue\n"
@@ -569,7 +577,7 @@ def enable_windows_nfs_features():
         "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
         "}\n"
         "\n"
-        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;TASK:$taskEnabled\""
+        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;TASK:$taskEnabled\""
     )
     
     check_cmd = [
@@ -579,6 +587,7 @@ def enable_windows_nfs_features():
     
     nfs_ok = False
     reg_ok = False
+    anon_ok = False
     task_ok = False
     
     try:
@@ -589,10 +598,15 @@ def enable_windows_nfs_features():
                 nfs_ok = (part.split(':')[1].lower() == 'true')
             elif part.startswith("REG:"):
                 reg_ok = (part.split(':')[1].lower() == 'true')
+            elif part.startswith("ANON:"):
+                anon_ok = (part.split(':')[1].lower() == 'true')
             elif part.startswith("TASK:"):
                 task_ok = (part.split(':')[1].lower() == 'true')
     except Exception as e:
         print(f"[yellow]Warning: Could not audit current Windows NFS settings: {e}[/yellow]")
+    
+    # Require both general registry settings and Anonymous mappings to be correct
+    reg_ok = reg_ok and anon_ok
     
     if nfs_ok and reg_ok and task_ok:
         print("[bold green][OK] Windows NFS client features, registry policies, and Task Scheduler gateway are already configured.[/bold green]")

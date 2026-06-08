@@ -50,6 +50,20 @@ if (-not $RegAlreadyEnabled) {
     Write-Host "[OK] Registry value already configured." -ForegroundColor Green
 }
 
+# 2.5 Configure Anonymous UID/GID to match hf-mount-nfs (UID 0)
+if (-not $RegAlreadyEnabled) {
+    Write-Host "Configuring Anonymous UID/GID for NFS Client..." -ForegroundColor Cyan
+    $clientForNfsPath = "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default"
+    if (-not (Test-Path $clientForNfsPath)) {
+        New-Item -Path $clientForNfsPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $clientForNfsPath -Name "AnonymousUid" -Value 0 -PropertyType DWORD -Force | Out-Null
+    New-ItemProperty -Path $clientForNfsPath -Name "AnonymousGid" -Value 0 -PropertyType DWORD -Force | Out-Null
+    Write-Host "[OK] Anonymous UID/GID configured." -ForegroundColor Green
+} else {
+    Write-Host "[OK] Anonymous UID/GID registry values already configured (skipped)." -ForegroundColor Green
+}
+
 # 3. Create public ProgramData folder and configure permissions for Authenticated Users
 Write-Host "Initializing public accli configuration directory..." -ForegroundColor Cyan
 $configDir = "C:\ProgramData\accli"

@@ -31,10 +31,12 @@ if (Get-Command Unregister-ScheduledTask -ErrorAction SilentlyContinue) {
 }
 Write-Host "[OK] Scheduled Task removed." -ForegroundColor Green
 
-# 2. Delete Registry Policy Key
-Write-Host "Removing EnableLinkedConnections registry policy..." -ForegroundColor Yellow
+# 2. Delete Registry Policy Keys
+Write-Host "Removing registry policies (EnableLinkedConnections, AnonymousUid, AnonymousGid)..." -ForegroundColor Yellow
 Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLinkedConnections" -ErrorAction SilentlyContinue | Out-Null
-Write-Host "[OK] Registry policy removed." -ForegroundColor Green
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "AnonymousUid" -ErrorAction SilentlyContinue | Out-Null
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "AnonymousGid" -ErrorAction SilentlyContinue | Out-Null
+Write-Host "[OK] Registry policies removed." -ForegroundColor Green
 
 # 3. Delete Config Folder & Helpers
 Write-Host "Deleting ProgramData configurations..." -ForegroundColor Yellow
