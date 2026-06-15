@@ -446,6 +446,30 @@ class AcceleratorJobProjectService:
             headers=headers
         )
 
+    def register_validation_with_filename(
+            self,
+            validated_filename: str,
+            dataset_template_id: int,
+            validated_metadata: dict,
+            validation_supporting_filenames: List[str]
+    ):
+        headers = {"Content-Type": "application/json"}
+
+        headers.update(self.common_request_headers)
+
+        res = self.http_client_request(
+            "PUT",
+            f"{self.cli_base_url}/register-validation-with-filename/",
+            json=dict(
+                validated_filename=validated_filename,
+                dataset_template_id=dataset_template_id,
+                validated_metadata=validated_metadata,
+                validation_supporting_filenames=validation_supporting_filenames
+            ),
+            headers=headers
+        )
+
+
     def get_dataset_template_details(
             self,
             dataset_template_id
