@@ -43,3 +43,9 @@ echo "Successfully installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
 if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
     echo "Warning: ${INSTALL_DIR} is not in your PATH."
 fi
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo ""
+    echo "If you need to run ${BINARY_NAME} globally or with sudo, you can symlink it:"
+    echo "  sudo ln -sf ${INSTALL_DIR}/${BINARY_NAME} /usr/local/bin/${BINARY_NAME}"
+fi
