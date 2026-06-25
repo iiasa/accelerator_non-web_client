@@ -80,14 +80,21 @@ jobs:
           
           mkdir -p ../dist/binaries
           cp "$BINARY_SOURCE" ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-
-      - name: Build Windows GUI Binary
-        if: matrix.os == 'windows-latest'
+          
+      - name: Build GUI Binary
         shell: bash
         run: |
           pip install pyinstaller
-          pyinstaller --onefile --noconsole --name accli-gui-windows --add-data "accli/*.ps1;accli" accli/gui.py
-          cp dist/accli-gui-windows.exe dist/binaries/
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            pyinstaller --onefile --noconsole --name accli-gui-windows --add-data "accli/*.ps1;accli" accli/gui.py
+            cp dist/accli-gui-windows.exe dist/binaries/
+          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            pyinstaller --onefile --name accli-gui-linux accli/gui.py
+            cp dist/accli-gui-linux dist/binaries/
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            pyinstaller --onefile --noconsole --name accli-gui-macos accli/gui.py
+            cp dist/accli-gui-macos dist/binaries/
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -115,7 +122,9 @@ jobs:
         with:
           files: |
             dist/binaries/accli-linux/accli-linux
+            dist/binaries/accli-linux/accli-gui-linux
             dist/binaries/accli-windows/accli-windows.exe
             dist/binaries/accli-windows/accli-gui-windows.exe
             dist/binaries/accli-macos/accli-macos
+            dist/binaries/accli-macos/accli-gui-macos
           generate_release_notes: true
