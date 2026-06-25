@@ -939,6 +939,8 @@ def mount_start(
                     print("[yellow]Falling back to UAC elevation...[/yellow]")
                     has_task = False
             except Exception as e:
+                if isinstance(e, typer.Exit) or type(e).__name__ == "Exit":
+                    raise e
                 print(f"[bold red]ERROR: Task Scheduler trigger failed: {e}[/bold red]")
                 print("[yellow]Falling back to UAC elevation...[/yellow]")
                 has_task = False
@@ -1159,6 +1161,9 @@ def mount_stop(
 
         # 1. Unmap the network drive in the user session
         res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", str(mount_point_abs)], capture_output=True, text=True)
+        if res.returncode != 0:
+            # Fallback to force-releasing using net use
+            subprocess.run(["net", "use", str(mount_point_abs), "/delete", "/y"], capture_output=True)
 
         # 2. Terminate the background daemon
         has_umount_task = False
@@ -1173,8 +1178,13 @@ def mount_stop(
         if has_umount_task:
             print("[cyan]Triggering elevated NFS daemon termination via Task Scheduler...[/cyan]")
             subprocess.run(["schtasks", "/run", "/tn", "accli-umount-nfs"], capture_output=True)
+            # Poll for up to 5 seconds to ensure hf-mount-nfs.exe has fully terminated
             import time
-            time.sleep(1.5)
+            for _ in range(10):
+                time.sleep(0.5)
+                task_check = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
+                if "hf-mount-nfs.exe" not in task_check.stdout:
+                    break
         else:
             # If admin or task scheduler gateway is not registered, stop/kill directly
             if is_admin:

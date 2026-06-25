@@ -413,12 +413,22 @@ class AccliGuiApp(tk.Tk):
     def refresh_mounts_list(self):
         def on_done(code, output):
             self.mounts_list.delete(0, tk.END)
-            # Simple parsing of 'accli mount status' output
-            # For Windows it prints drive letters / process running status
+            # Filter and parse 'accli mount status' output
             lines = output.splitlines()
             for line in lines:
-                if line.strip():
-                    self.mounts_list.insert(tk.END, line.strip())
+                cleaned = line.strip()
+                if not cleaned:
+                    continue
+                
+                # Only insert actual mount entries, skip headers and info logs
+                if platform.system() == "Windows":
+                    # Look for lines starting with drive letter (e.g. W:)
+                    if len(cleaned) >= 2 and cleaned[0].isalpha() and cleaned[1] == ":":
+                        self.mounts_list.insert(tk.END, cleaned)
+                else:
+                    # Look for lines starting with absolute/home path (e.g. / or ~)
+                    if cleaned.startswith("/") or cleaned.startswith("~"):
+                        self.mounts_list.insert(tk.END, cleaned)
         
         self.run_cli_async(["mount", "status"], on_done=on_done, log_to_viewer=False)
 
