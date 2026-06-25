@@ -140,12 +140,12 @@ def ensure_binaries(version: str = DEFAULT_VERSION, use_fuse: bool = False):
             if sys_name != "Windows":
                 current_stat = dest_path.stat().st_mode
                 dest_path.chmod(current_stat | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-            print(f"[bold green]✔ Successfully cached {bin_name}[/bold green]")
+            print(f"[bold green][OK] Successfully cached {bin_name}[/bold green]")
 
         except Exception as e:
             if part_path.exists():
                 part_path.unlink()
-            print(f"[bold red]✖ Failed to download {bin_name}: {e}[/bold red]")
+            print(f"[bold red][ERROR] Failed to download {bin_name}: {e}[/bold red]")
             raise typer.Exit(1)
 
     # After all downloads successfully complete, update the cached version file

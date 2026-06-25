@@ -400,7 +400,7 @@ def copy(
                 progress_updater=None,
                 request_headers=None
             )
-            print("[bold green]✔ Download completed successfully![/bold green]")
+            print("[bold green][OK] Download completed successfully![/bold green]")
         except Exception as e:
             print(f"[bold red]ERROR: Download failed: {e}[/bold red]")
             raise typer.Exit(1)
@@ -500,7 +500,7 @@ def copy(
                 verify=(not ACCLI_DEBUG)
             )
             response.raise_for_status()
-            print("[bold green]✔ Upload and bulk metadata registration completed successfully![/bold green]")
+            print("[bold green][OK] Upload and bulk metadata registration completed successfully![/bold green]")
         except requests.exceptions.HTTPError as e:
             detail = None
             try:
@@ -1132,8 +1132,9 @@ def mount_stop(
                             print(f"[bold red]ERROR: You requested to stop '{mount_point_abs}', but the active daemon is mounted at '{active_mount}'.[/bold red]")
                             print(f"[yellow]To stop the server, please run: accli mount stop {active_mount}[/yellow]")
                             raise typer.Exit(1)
-                except Exception:
-                    pass
+                except Exception as e:
+                    if isinstance(e, typer.Exit) or type(e).__name__ == "Exit":
+                        raise e
     else:
         if mount_point is None:
             try:
