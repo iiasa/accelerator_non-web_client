@@ -31,6 +31,9 @@ classifiers = [
 [tool.setuptools]
 packages = ['accli']
 
+[tool.setuptools.package-data]
+accli = ["*.ps1"]
+
 [tool.setuptools.dynamic]
 version = {attr="accli._version.VERSION"}
 
