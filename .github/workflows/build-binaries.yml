@@ -84,7 +84,7 @@ jobs:
       - name: Build GUI Binary
         shell: bash
         run: |
-          pip install pyinstaller
+          pip install dist/*.whl pyinstaller
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             pyinstaller --onefile --noconsole --name accli-gui-windows --add-data "accli/*.ps1;accli" accli/gui.py
             cp dist/accli-gui-windows.exe dist/binaries/

@@ -87,6 +87,7 @@ class AccliGuiApp(tk.Tk):
         # Build Tabs
         self.build_mounts_tab()
         self.build_copy_tab()
+        self.build_dispatch_tab()
         self.build_auth_tab()
         self.build_logs_tab()
 
@@ -96,11 +97,6 @@ class AccliGuiApp(tk.Tk):
             # Determine how to invoke accli
             if getattr(sys, "frozen", False):
                 # Executable mode (PyInstaller package)
-                # sys.executable is the path to the current running EXE
-                # In PyInstaller, the console launcher could be bypassed by calling our own EXE
-                # However, if we need to call CLI commands, the same EXE contains the entrypoint.
-                # If packaged with --noconsole, calling sys.executable with CLI args might require passing them.
-                # Let's run with python -m if running as script, or use sys.executable directly.
                 cmd = [sys.executable] + args
             else:
                 # Script mode
@@ -146,6 +142,9 @@ class AccliGuiApp(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def append_log(self, text):
+        self.after(0, lambda: self._safe_append_log(text))
+
+    def _safe_append_log(self, text):
         self.log_txt.configure(state=tk.NORMAL)
         self.log_txt.insert(tk.END, text)
         self.log_txt.see(tk.END)
@@ -162,40 +161,199 @@ class AccliGuiApp(tk.Tk):
         
         ttk.Label(card, text="Server URL:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.server_url_val = tk.StringVar(value="https://accelerator.iiasa.ac.at")
-        server_entry = ttk.Entry(card, textvariable=self.server_url_val, width=40)
-        server_entry.grid(row=0, column=1, sticky=tk.W, padx=10, pady=5)
+        self.server_entry = ttk.Entry(card, textvariable=self.server_url_val, width=40)
+        self.server_entry.grid(row=0, column=1, sticky=tk.W, padx=10, pady=5)
         
-        login_btn = ttk.Button(card, text="Authenticate / Login", command=self.action_login)
-        login_btn.grid(row=0, column=2, padx=10, pady=5)
+        self.login_btn = ttk.Button(card, text="Authenticate / Login", command=self.action_login)
+        self.login_btn.grid(row=0, column=2, padx=10, pady=5)
         
         # Connection status details
         self.conn_details_txt = tk.Text(auth_tab, height=12, bg="#2d2d2d", fg="#ffffff", insertbackground="white", font=("Courier New", 10), state=tk.DISABLED)
         self.conn_details_txt.pack(fill=tk.BOTH, expand=True, pady=10)
 
     def refresh_login_status(self):
+        from accli.token import get_db_path
+        from tinydb import TinyDB
+        db_path = get_db_path()
+        logged_in = False
+        server_url = "https://accelerator.iiasa.ac.at"
+        
+        if os.path.exists(db_path):
+            try:
+                db = TinyDB(db_path)
+                for item in db:
+                    if item.get('token'):
+                        logged_in = True
+                    if item.get('server_url'):
+                        server_url = item.get('server_url')
+            except Exception:
+                pass
+                
+        self.is_logged_in_state = logged_in
+        if logged_in:
+            self.login_btn.configure(text="Logout", style="Stop.TButton")
+            self.server_entry.configure(state=tk.DISABLED)
+            self.server_url_val.set(server_url)
+            self.status_bar_val.set("Session Status: Connected")
+        else:
+            self.login_btn.configure(text="Authenticate / Login", style="TButton")
+            self.server_entry.configure(state=tk.NORMAL)
+            self.status_bar_val.set("Session Status: Disconnected")
+            
         def on_check_done(code, output):
             self.conn_details_txt.configure(state=tk.NORMAL)
             self.conn_details_txt.delete("1.0", tk.END)
             self.conn_details_txt.insert(tk.END, output)
             self.conn_details_txt.configure(state=tk.DISABLED)
-            if "Logged in as" in output or "Active Session" in output:
-                self.status_bar_val.set("Session Status: Connected")
-            else:
-                self.status_bar_val.set("Session Status: Disconnected")
 
-        # Let's run a status command
         self.run_cli_async(["status"], on_done=on_check_done, log_to_viewer=False)
 
     def action_login(self):
+        if hasattr(self, "is_logged_in_state") and self.is_logged_in_state:
+            from accli.token import get_db_path
+            db_path = get_db_path()
+            try:
+                if os.path.exists(db_path):
+                    os.remove(db_path)
+                self.append_log("Logged out successfully.\n")
+                messagebox.showinfo("Success", "Logged out successfully.")
+            except Exception as e:
+                self.append_log(f"Error during logout: {e}\n")
+            self.refresh_login_status()
+            return
+
         url = self.server_url_val.get().strip()
         if not url:
             messagebox.showerror("Error", "Please provide a valid Server URL.")
             return
         
         self.status_bar_val.set("Authenticating...")
-        # Direct user to complete authentication
+        
+        import webbrowser
+        from tkinter import simpledialog
+        import requests
+        from accli.token import save_token_details
+        
+        webcli_url = url
+        auth_url = f"{webcli_url.rstrip('/')}/acli-auth-code"
+        
+        self.append_log(f"Opening browser for authentication at: {auth_url}\n")
+        try:
+            webbrowser.open(auth_url)
+        except Exception as e:
+            self.append_log(f"Warning: Could not open browser automatically: {e}\n")
+            
+        auth_code = simpledialog.askstring(
+            "Authorization Code", 
+            f"Please authenticate in your browser at:\n{auth_url}\n\nThen enter the authorization code here:"
+        )
+        
+        if not auth_code:
+            self.status_bar_val.set("Session Status: Disconnected")
+            return
+            
+        def perform_auth():
+            try:
+                self.append_log("Exchanging authorization code for token...\n")
+                token_endpoint = f"{url.rstrip('/')}/api/v1/oauth/device/token/"
+                response = requests.post(
+                    token_endpoint,
+                    json={"device_authorization_code": auth_code.strip()},
+                    verify=True
+                )
+                
+                if response.status_code == 400:
+                    detail = response.json().get("detail", "Unknown error")
+                    self.append_log(f"Authentication Error: {detail}\n")
+                    self.after(0, lambda: messagebox.showerror("Auth Error", f"Failed to log in: {detail}"))
+                    self.after(0, self.refresh_login_status)
+                    return
+                    
+                response.raise_for_status()
+                data = response.json()
+                
+                save_token_details(data, url, webcli_url)
+                self.append_log("Authentication successful! Token saved.\n")
+                self.after(0, lambda: messagebox.showinfo("Success", "Successfully logged in!"))
+                self.after(0, self.refresh_login_status)
+            except Exception as e:
+                self.append_log(f"Authentication Failed: {e}\n")
+                self.after(0, lambda: messagebox.showerror("Error", f"Authentication failed: {e}"))
+                self.after(0, self.refresh_login_status)
+
+        threading.Thread(target=perform_auth, daemon=True).start()
+
+    # ------------------ DISPATCH TAB ------------------
+    def build_dispatch_tab(self):
+        dispatch_tab = ttk.Frame(self.notebook, padding=15)
+        self.notebook.add(dispatch_tab, text="Task Dispatcher")
+        
+        card = ttk.LabelFrame(dispatch_tab, text="Workflow Configuration", padding=15)
+        card.pack(fill=tk.X, pady=10)
+        
+        # Project Slug
+        ttk.Label(card, text="Project Slug:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.disp_slug_val = tk.StringVar()
+        ttk.Entry(card, textvariable=self.disp_slug_val, width=30).grid(row=0, column=1, sticky=tk.W, padx=10, pady=5)
+        
+        # Root Task Variable
+        ttk.Label(card, text="Root Task Variable:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.disp_root_val = tk.StringVar()
+        ttk.Entry(card, textvariable=self.disp_root_val, width=30).grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
+        
+        # Workflow File Path
+        ttk.Label(card, text="Workflow Python File (-f):").grid(row=2, column=0, sticky=tk.W, pady=5)
+        file_frame = ttk.Frame(card)
+        file_frame.grid(row=2, column=1, sticky=tk.W, padx=10, pady=5)
+        
+        self.disp_file_val = tk.StringVar(value="wkube.py")
+        ttk.Entry(file_frame, textvariable=self.disp_file_val, width=30).pack(side=tk.LEFT)
+        ttk.Button(file_frame, text="Browse...", command=self.browse_workflow_file).pack(side=tk.LEFT, padx=5)
+        
+        # Dispatch Button
+        btn_frame = ttk.Frame(dispatch_tab)
+        btn_frame.pack(fill=tk.X, pady=15)
+        
+        dispatch_btn = ttk.Button(btn_frame, text="Dispatch Task", command=self.action_dispatch)
+        dispatch_btn.pack(anchor=tk.CENTER)
+        
+        # Try to pre-populate project slug from config
+        try:
+            from accli.token import get_project_slug
+            slug = get_project_slug()
+            if slug:
+                self.disp_slug_val.set(slug)
+        except Exception:
+            pass
+
+    def browse_workflow_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Python Files", "*.py")])
+        if file_path:
+            self.disp_file_val.set(file_path)
+
+    def action_dispatch(self):
+        slug = self.disp_slug_val.get().strip()
+        root_var = self.disp_root_val.get().strip()
+        wf_file = self.disp_file_val.get().strip()
+        
+        if not slug or not root_var or not wf_file:
+            messagebox.showerror("Error", "Please fill in all Dispatch fields.")
+            return
+            
+        args = ["dispatch", slug, root_var, "-f", wf_file]
+        
+        self.status_bar_val.set("Dispatching workflow...")
         self.notebook.select(self.log_tab_idx)
-        self.run_cli_async(["login", "--server-url", url], on_done=lambda c, o: self.refresh_login_status())
+        
+        def on_done(code, output):
+            if code == 0:
+                self.status_bar_val.set("Workflow Dispatched")
+                messagebox.showinfo("Success", "Workflow task successfully dispatched!")
+            else:
+                self.status_bar_val.set("Dispatch Failed")
+                messagebox.showerror("Error", "Failed to dispatch workflow task. See logs for details.")
+
+        self.run_cli_async(args, on_done=on_done)
 
     # ------------------ MOUNTS TAB ------------------
     def build_mounts_tab(self):
