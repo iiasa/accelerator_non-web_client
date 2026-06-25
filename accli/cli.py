@@ -738,6 +738,27 @@ def mount_start(
 
     # Standardize mount_point and handle defaults / auto-selection
     if sys_name == "Windows":
+        # Check if the daemon is already running to prevent double mount
+        import subprocess
+        try:
+            task_check = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
+            if "hf-mount-nfs.exe" in task_check.stdout:
+                config_file = Path("C:/ProgramData/accli/mount_config.json")
+                active_msg = ""
+                if config_file.is_file():
+                    try:
+                        import json
+                        cfg = json.loads(config_file.read_text(encoding="utf-8"))
+                        active_msg = f" for project '{cfg.get('project_slug')}' at '{cfg.get('mount_point')}'"
+                    except Exception:
+                        pass
+                print(f"[bold red]ERROR: A mount daemon is already running{active_msg}.[/bold red]")
+                print("[yellow]Please run 'accli mount stop' to unmount before starting a new mount.[/yellow]")
+                raise typer.Exit(1)
+        except Exception as e:
+            if isinstance(e, typer.Exit):
+                raise e
+
         if mount_point is None:
             # Auto-detect available drive letter starting with W
             try:
@@ -1128,28 +1149,63 @@ def mount_stop(
         print(f"[bold cyan]Stopping mount at '[white]{mount_point_abs}[/white]' on Windows...[/bold cyan]")
         import subprocess
         
-        # 1. Run Windows standard umount command
+        # Determine if current user is admin
+        try:
+            import ctypes
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            is_admin = False
+
+        # 1. Unmap the network drive in the user session
         res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", str(mount_point_abs)], capture_output=True, text=True)
-        
-        # 2. Stop the scheduled task (which terminates the elevated daemon background process tree)
-        try:
-            subprocess.run(["schtasks", "/end", "/tn", "accli-mount-nfs"], capture_output=True)
-        except Exception:
-            pass
-        
-        # 2. Selective Kill: Target and terminate only the specific process using the target mount point using a PowerShell command-line filter
-        try:
-            escaped_mount_point = str(mount_point_abs).replace("'", "''")
-            kill_cmd = [
-                "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-                f"Get-CimInstance Win32_Process -Filter \"name='hf-mount-nfs.exe'\" | "
-                f"Where-Object {{ $_.CommandLine -like '*{escaped_mount_point}*' }} | "
-                f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
-            ]
-            subprocess.run(kill_cmd, capture_output=True)
-        except Exception:
-            # Fallback to killing all instances if selective filter fails
-            subprocess.run(["taskkill", "/f", "/im", "hf-mount-nfs.exe"], capture_output=True)
+
+        # 2. Terminate the background daemon
+        has_umount_task = False
+        if not is_admin:
+            try:
+                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-umount-nfs"], capture_output=True, text=True)
+                if task_check.returncode == 0:
+                    has_umount_task = True
+            except Exception:
+                pass
+
+        if has_umount_task:
+            print("[cyan]Triggering elevated NFS daemon termination via Task Scheduler...[/cyan]")
+            subprocess.run(["schtasks", "/run", "/tn", "accli-umount-nfs"], capture_output=True)
+            import time
+            time.sleep(1.5)
+        else:
+            # If admin or task scheduler gateway is not registered, stop/kill directly
+            if is_admin:
+                try:
+                    subprocess.run(["schtasks", "/end", "/tn", "accli-mount-nfs"], capture_output=True)
+                except Exception:
+                    pass
+                try:
+                    escaped_mount_point = str(mount_point_abs).replace("'", "''")
+                    kill_cmd = [
+                        "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                        f"Get-CimInstance Win32_Process -Filter \"name='hf-mount-nfs.exe'\" | "
+                        f"Where-Object {{ $_.CommandLine -like '*{escaped_mount_point}*' }} | "
+                        f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
+                    ]
+                    subprocess.run(kill_cmd, capture_output=True)
+                except Exception:
+                    # Fallback to killing all instances if selective filter fails
+                    subprocess.run(["taskkill", "/f", "/im", "hf-mount-nfs.exe"], capture_output=True)
+            else:
+                # Standard user with no task registered - need UAC to end task/kill process
+                print("[yellow]Notice: Task Scheduler gateway is not active. Requesting UAC elevation to terminate daemon...[/yellow]")
+                ps_command = (
+                    "Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command "
+                    "\"Stop-ScheduledTask -TaskName accli-mount-nfs -ErrorAction SilentlyContinue; "
+                    "Get-CimInstance Win32_Process -Filter \\\"name=''hf-mount-nfs.exe''\\\" | Stop-Process -Force -ErrorAction SilentlyContinue\"' "
+                    "-Verb RunAs -Wait"
+                )
+                subprocess.run([
+                    "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                    ps_command
+                ], capture_output=True)
         
         if res.returncode == 0 or "successfully" in res.stdout or "successfully" in res.stderr:
             print("[bold green][OK] Mount stopped successfully.[/bold green]")

@@ -140,6 +140,28 @@ $helperScriptPath = "C:\ProgramData\accli\run-mount-helper.ps1"
 Set-Content -Path $helperScriptPath -Value $helperScript -Encoding UTF8
 Write-Host "[OK] Mount helper script registered." -ForegroundColor Green
 
+# 4.5 Write static run-umount-helper.ps1 static helper
+Write-Host "Registering run-umount-helper script..." -ForegroundColor Cyan
+$helperUmountScript = @'
+try {
+    if (Get-Command Stop-ScheduledTask -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName "accli-mount-nfs" -ErrorAction SilentlyContinue | Out-Null
+    } else {
+        schtasks /end /tn "accli-mount-nfs" 2> $null | Out-Null
+    }
+} catch {}
+
+try {
+    Get-CimInstance Win32_Process -Filter "name='hf-mount-nfs.exe'" | ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+} catch {}
+'@
+
+$helperUmountScriptPath = "C:\ProgramData\accli\run-umount-helper.ps1"
+Set-Content -Path $helperUmountScriptPath -Value $helperUmountScript -Encoding UTF8
+Write-Host "[OK] Umount helper script registered." -ForegroundColor Green
+
 # 5. Register the Scheduled Task (accli-mount-nfs)
 Write-Host "Registering accli-mount-nfs Scheduled Task..." -ForegroundColor Cyan
 $taskName = "accli-mount-nfs"
@@ -172,34 +194,65 @@ if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     Write-Host "[OK] Scheduled Task registered successfully." -ForegroundColor Green
 }
 
-# Grant Authenticated Users permission to read, query, and run the task file
-$taskFile = "C:\Windows\System32\Tasks\accli-mount-nfs"
-if (Test-Path $taskFile) {
+# 5.5 Register the Scheduled Task (accli-umount-nfs)
+Write-Host "Registering accli-umount-nfs Scheduled Task..." -ForegroundColor Cyan
+$umountTaskName = "accli-umount-nfs"
+$psUmountActionArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helperUmountScriptPath`""
+
+if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     try {
-        $acl = Get-Acl $taskFile
-        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("Authenticated Users", "ReadAndExecute", "Allow")
-        $acl.AddAccessRule($rule)
-        Set-Acl $taskFile $acl
-        Write-Host "[OK] Task file permissions configured (Access allowed for Authenticated Users)." -ForegroundColor Green
+        $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psUmountActionArgs
+        $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        
+        Unregister-ScheduledTask -TaskName $umountTaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        Register-ScheduledTask -TaskName $umountTaskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+        
+        Write-Host "[OK] Umount Scheduled Task registered successfully." -ForegroundColor Green
     } catch {
-        Write-Warning "Could not configure task file permissions. Standard users might not be able to trigger the task without UAC."
+        schtasks /delete /tn $umountTaskName /f 2> $null | Out-Null
+        schtasks /create /tn $umountTaskName /tr "$psActionPath $psUmountActionArgs" /sc ONCE /sd "2026/01/01" /st "00:00" /ru "SYSTEM" /rl "HIGHEST" /f | Out-Null
+        Write-Host "[OK] Umount Scheduled Task registered successfully." -ForegroundColor Green
+    }
+} else {
+    schtasks /delete /tn $umountTaskName /f 2> $null | Out-Null
+    schtasks /create /tn $umountTaskName /tr "$psActionPath $psUmountActionArgs" /sc ONCE /sd "2026/01/01" /st "00:00" /ru "SYSTEM" /rl "HIGHEST" /f | Out-Null
+    Write-Host "[OK] Umount Scheduled Task registered successfully." -ForegroundColor Green
+}
+
+# Grant Authenticated Users permission to read, query, and run the task files
+foreach ($tName in @("accli-mount-nfs", "accli-umount-nfs")) {
+    $taskFile = "C:\Windows\System32\Tasks\$tName"
+    if (Test-Path $taskFile) {
+        try {
+            $acl = Get-Acl $taskFile
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("Authenticated Users", "ReadAndExecute", "Allow")
+            $acl.AddAccessRule($rule)
+            Set-Acl $taskFile $acl
+            Write-Host "[OK] Task file permissions configured for $tName." -ForegroundColor Green
+        } catch {
+            Write-Warning "Could not configure task file permissions for $tName."
+        }
     }
 }
 
-# Grant Authenticated Users permission to query and trigger the Task Scheduler Service task object itself via COM SDDL
+# Grant Authenticated Users permission to query and trigger the Task Scheduler Service task objects themselves via COM SDDL
 try {
     $Scheduler = New-Object -ComObject "Schedule.Service"
     $Scheduler.Connect()
-    $TaskObject = $Scheduler.GetFolder("\").GetTask("accli-mount-nfs")
-    $SDDL = $TaskObject.GetSecurityDescriptor(0xF)
     
-    # (A;;GRGX;;;AU) grants Read (GR) and Execute (GX) to Authenticated Users (AU)
-    if ($SDDL -notmatch 'A;;0x1200a9;;;AU' -and $SDDL -notmatch 'A;;GRGX;;;AU') {
-        $SDDL = $SDDL + '(A;;GRGX;;;AU)'
-        $TaskObject.SetSecurityDescriptor($SDDL, 0)
-        Write-Host "[OK] Task Scheduler COM Service permissions configured for Authenticated Users." -ForegroundColor Green
-    } else {
-        Write-Host "[OK] Task Scheduler COM Service permissions already configured." -ForegroundColor Green
+    foreach ($tName in @("accli-mount-nfs", "accli-umount-nfs")) {
+        $TaskObject = $Scheduler.GetFolder("\").GetTask($tName)
+        $SDDL = $TaskObject.GetSecurityDescriptor(0xF)
+        
+        # (A;;GRGX;;;AU) grants Read (GR) and Execute (GX) to Authenticated Users (AU)
+        if ($SDDL -notmatch 'A;;0x1200a9;;;AU' -and $SDDL -notmatch 'A;;GRGX;;;AU') {
+            $SDDL = $SDDL + '(A;;GRGX;;;AU)'
+            $TaskObject.SetSecurityDescriptor($SDDL, 0)
+            Write-Host "[OK] Task Scheduler COM Service permissions configured for $tName." -ForegroundColor Green
+        } else {
+            Write-Host "[OK] Task Scheduler COM Service permissions already configured for $tName." -ForegroundColor Green
+        }
     }
 } catch {
     Write-Warning "Could not configure Task Scheduler COM permissions: $_"

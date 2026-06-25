@@ -22,14 +22,16 @@ if (-not $isAdmin) {
 
 Write-Host "=== Reverting accli Windows NFS Client Configuration ===" -ForegroundColor Cyan
 
-# 1. Unregister Scheduled Task
-Write-Host "Removing accli-mount-nfs Scheduled Task..." -ForegroundColor Yellow
+# 1. Unregister Scheduled Tasks
+Write-Host "Removing Scheduled Tasks..." -ForegroundColor Yellow
 if (Get-Command Unregister-ScheduledTask -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName "accli-mount-nfs" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    Unregister-ScheduledTask -TaskName "accli-umount-nfs" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 } else {
     schtasks /delete /tn "accli-mount-nfs" /f 2> $null | Out-Null
+    schtasks /delete /tn "accli-umount-nfs" /f 2> $null | Out-Null
 }
-Write-Host "[OK] Scheduled Task removed." -ForegroundColor Green
+Write-Host "[OK] Scheduled Tasks removed." -ForegroundColor Green
 
 # 2. Delete Registry Policy Keys
 Write-Host "Removing registry policies (EnableLinkedConnections, AnonymousUid, AnonymousGid)..." -ForegroundColor Yellow
