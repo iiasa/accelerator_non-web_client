@@ -81,11 +81,19 @@ jobs:
           mkdir -p ../dist/binaries
           cp "$BINARY_SOURCE" ../dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
+      - name: Build Windows GUI Binary
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --noconsole --name accli-gui-windows --add-data "accli/*.ps1;accli" accli/gui.py
+          cp dist/accli-gui-windows.exe dist/binaries/
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/binaries/${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          path: dist/binaries/
 
   release:
     name: Create GitHub Release
@@ -108,5 +116,6 @@ jobs:
           files: |
             dist/binaries/accli-linux/accli-linux
             dist/binaries/accli-windows/accli-windows.exe
+            dist/binaries/accli-windows/accli-gui-windows.exe
             dist/binaries/accli-macos/accli-macos
           generate_release_notes: true

@@ -43,3 +43,4 @@ version = {attr="accli._version.VERSION"}
 
 [project.scripts]
 accli = "accli.cli:app"
+accli-gui = "accli.gui:main"
