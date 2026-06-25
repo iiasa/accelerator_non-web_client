@@ -96,6 +96,7 @@ jobs:
           
           # 2. Build GUI binary
           export PYAPP_EXEC_SPEC="accli.gui:main"
+          export PYAPP_IS_GUI=1
           
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
