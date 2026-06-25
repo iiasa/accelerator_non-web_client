@@ -284,8 +284,16 @@ class AccliGuiApp(tk.Tk):
         def on_done(code, output):
             self.refresh_mounts_list()
             if code == 0:
-                self.status_bar_val.set("Mount Active")
-                messagebox.showinfo("Success", f"Successfully mounted project '{slug}'!")
+                if "system restart is required" in output.lower() or "restart your computer" in output.lower():
+                    self.status_bar_val.set("Restart Required")
+                    messagebox.showwarning(
+                        "System Restart Required",
+                        "A Windows system restart is required for the new NFS Client features and registry policies to take effect.\n\n"
+                        "Please restart your computer, then run the mount again."
+                    )
+                else:
+                    self.status_bar_val.set("Mount Active")
+                    messagebox.showinfo("Success", f"Successfully mounted project '{slug}'!")
             else:
                 self.status_bar_val.set("Mount Failed")
                 messagebox.showerror("Error", f"Failed to mount project '{slug}'. See logs for details.")
@@ -415,4 +423,8 @@ def main():
     app.mainloop()
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        from accli.cli import app as cli_app
+        cli_app()
+    else:
+        main()
