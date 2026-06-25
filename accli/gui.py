@@ -9,6 +9,9 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+# Ensure PyInstaller static analyzer traces and bundles all CLI dependencies
+import accli.cli
+
 class AccliGuiApp(tk.Tk):
     def __init__(self):
         super().__init__()
