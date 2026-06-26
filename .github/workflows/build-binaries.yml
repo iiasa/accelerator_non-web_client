@@ -108,6 +108,37 @@ jobs:
           
           cp "$BINARY_SOURCE" ../dist/binaries/"$GUI_NAME"
 
+      - name: Sign Windows Binaries
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_PFX_BASE64) {
+            Write-Host "Warning: WINDOWS_PFX_BASE64 is not set. Skipping Windows binary signing."
+            exit 0
+          }
+          
+          # Decode the PFX certificate
+          [IO.File]::WriteAllBytes("codesign.pfx", [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          
+          # Find signtool.exe dynamically
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -Recurse | Select-Object -First 1
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found under C:\Program Files (x86)\Windows Kits"
+            exit 1
+          }
+          
+          Write-Host "Signing CLI binary..."
+          & $signtool.FullName sign /f codesign.pfx /p $env:WINDOWS_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist/binaries/accli-windows.exe
+          
+          Write-Host "Signing GUI binary..."
+          & $signtool.FullName sign /f codesign.pfx /p $env:WINDOWS_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist/binaries/accli-gui-windows.exe
+          
+          # Clean up certificate file
+          Remove-Item codesign.pfx -Force
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -163,4 +194,5 @@ jobs:
             dist/binaries/accli-macos/accli-macos.crt
             dist/binaries/accli-macos/accli-gui-macos.sig
             dist/binaries/accli-macos/accli-gui-macos.crt
+            certs/accli-windows-code-signing.crt
           generate_release_notes: true
