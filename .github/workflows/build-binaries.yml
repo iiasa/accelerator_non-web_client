@@ -85,7 +85,7 @@ jobs:
           cd ..
           
           # 2. Build GUI binary using PyInstaller
-          pip install pyinstaller
+          pip install dist/*.whl pyinstaller
           
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             GUI_NAME="accli-gui-linux"
