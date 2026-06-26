@@ -6,6 +6,28 @@ import platform
 import threading
 import subprocess
 from pathlib import Path
+
+def setup_tcl_tk_env():
+    base = sys.base_prefix
+    for sub in ["tcl", "lib", "."]:
+        search_dir = os.path.join(base, sub)
+        if not os.path.isdir(search_dir):
+            continue
+        try:
+            for item in os.listdir(search_dir):
+                item_path = os.path.join(search_dir, item)
+                if os.path.isdir(item_path):
+                    if item.startswith("tcl") and not os.environ.get("TCL_LIBRARY"):
+                        if os.path.isfile(os.path.join(item_path, "init.tcl")):
+                            os.environ["TCL_LIBRARY"] = item_path
+                    elif item.startswith("tk") and not os.environ.get("TK_LIBRARY"):
+                        if os.path.isfile(os.path.join(item_path, "tk.tcl")):
+                            os.environ["TK_LIBRARY"] = item_path
+        except Exception:
+            pass
+
+setup_tcl_tk_env()
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
