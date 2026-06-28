@@ -141,7 +141,7 @@ def dispatch(
         verify_cert=(not ACCLI_DEBUG)
     )
 
-    # ✅ Resolve the workflow file path properly
+    #  Resolve the workflow file path properly
     if os.path.isabs(workflow_filename):
         workflow_filepath = workflow_filename
     else:
@@ -152,9 +152,9 @@ def dispatch(
 
     workflow_dir = os.path.dirname(workflow_filepath)
 
-    # ✅ Temporarily switch to the workflow file's directory
+    #  Temporarily switch to the workflow file's directory
     with pushd(workflow_dir):
-        # ✅ Import the module dynamically
+        #  Import the module dynamically
         spec = importlib.util.spec_from_file_location("workflow", workflow_filepath)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

@@ -205,8 +205,8 @@ class CsvRegionalTimeseriesValidator:
             for key in self.errors:
                 print(f"[bold red]Invalid data:[/bold red] {self.errors[key]}")
                 print(f"[bold red]Error:[/bold red] {key}")
-            print("[bold red]Data is not valid against selected template. ⚠️⚠️")
+            print("[bold red]Data is not valid against selected template.[/bold red]")
             typer.Exit(1)
         else:
-            print("[bold green]Data validated against selected template.[/bold green] 🎉🎉")
+            print("[bold green]Data validated against selected template.[/bold green]")
             typer.Exit(0)

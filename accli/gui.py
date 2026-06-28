@@ -538,7 +538,7 @@ class AccliGuiApp(tk.Tk):
         # Swap button
         swap_frame = ttk.Frame(copy_tab)
         swap_frame.pack(fill=tk.X)
-        ttk.Button(swap_frame, text="⇅ Swap Paths", style="Refresh.TButton", command=self.swap_paths).pack(pady=2)
+        ttk.Button(swap_frame, text="<-> Swap Paths", style="Refresh.TButton", command=self.swap_paths).pack(pady=2)
 
         # Destination Group
         dest_frame = ttk.LabelFrame(copy_tab, text="Destination Path", padding=10)
