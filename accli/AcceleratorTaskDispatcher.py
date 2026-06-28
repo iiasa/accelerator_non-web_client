@@ -139,10 +139,10 @@ class JobDispatchModel(BaseModel):
 class WKubeTaskMeta(BaseModel):
     required_cores: float
     required_ram: float
-    required_storage_local: float
+    required_storage_local: Optional[float] = None
 
     # is ignored if it is a callback and child of non-free node jobs
-    required_storage_workflow: float
+    required_storage_workflow: Optional[float] = None
 
     job_secrets: Optional[dict] = {}
 
