@@ -17,7 +17,6 @@ for args in job_arguments:
 
         required_cores=0.5,
         required_ram=512 * 1024 ** 2,
-        required_storage_local=2 * 1024 ** 3,
         required_storage_workflow=0,
         timeout=60 * 60 * 24 * 7,
         conf={}
@@ -33,7 +32,6 @@ callback = WKubeTask(
 
     required_cores=0.5,
     required_ram=512 * 1024 ** 2,
-    required_storage_local=2 * 1024 ** 3,
     required_storage_workflow=0,
     timeout=60 * 60 * 24 * 7,
     conf={}

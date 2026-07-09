@@ -10,7 +10,6 @@ callback_task = WKubeTask(
         command="python -c \"import task; task.task(1,2,3, location='first callback')\"",
         required_cores=1,
         required_ram=1024*1024,
-        required_storage_local=1024*1024,
         required_storage_workflow=1024*1024,
         timeout=60*60
     )
@@ -22,7 +21,6 @@ another_callback = WKubeTask(
         command="python -c \"import task; task.task(1,2,3, location='another callback')\"",
         required_cores=1,
         required_ram=1024*1024,
-        required_storage_local=1024*1024,
         required_storage_workflow=1024*1024,
         timeout=60*60
     )
@@ -44,7 +42,6 @@ for item in ["parallel 1", "parallel 2", "parallel 3"]:
             command=f"python -c \"import task; task.task(1,2,3, location='{item}')\"",
             required_cores=1,
             required_ram=1024*1024,
-            required_storage_local=1024*1024,
             required_storage_workflow=1024*1024,
             timeout=60*60
         )
@@ -62,7 +59,6 @@ for item in ["parallel 1", "parallel 2", "parallel 3"]:
                 command=f"python -c \"import task; task.task(1,2,3, location='{item}{ii}')\"",
                 required_cores=1,
                 required_ram=1024*1024,
-                required_storage_local=1024*1024,
                 required_storage_workflow=1024*1024,
                 timeout=60*60
             )
