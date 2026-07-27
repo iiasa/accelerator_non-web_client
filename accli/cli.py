@@ -300,12 +300,6 @@ def copy(
         verify_cert=(not ACCLI_DEBUG),
     )
 
-    def make_token_refresher(slug: str):
-        def refresher() -> tuple[str, int]:
-            token_str, _, exp_time = exchange_refresh_token(slug)
-            return token_str, exp_time
-        return refresher
-
     if is_src_remote:
         # Download flow: acc://[project_slug]/[remote_prefix] -> local destination
         source_parsed = source[len("acc://"):]
@@ -336,7 +330,7 @@ def copy(
         else:
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-        download_infos = []
+        files_to_download = []
         for filename in filenames:
             # Filename returned usually starts with project_slug/
             if filename.startswith(f"{project_slug}/"):
@@ -378,32 +372,98 @@ def copy(
 
             local_dest.parent.mkdir(parents=True, exist_ok=True)
 
-            download_infos.append(
-                hf_xet.PyXetDownloadInfo(
-                    destination_path=str(local_dest.resolve()),
-                    hash=merkle_hash,
-                    file_size=file_size
-                )
+            files_to_download.append(
+                (str(local_dest.resolve()), merkle_hash, file_size)
             )
 
-        if not download_infos:
+        if not files_to_download:
             print("[bold red]ERROR: No valid files identified for download.[/bold red]")
             raise typer.Exit(1)
 
-        print(f"[bold cyan]Downloading {len(download_infos)} files using hf-xet...[/bold cyan]")
-        try:
-            hf_xet.download_files(
-                files=download_infos,
-                endpoint=cas_endpoint,
-                token_info=(cas_token, expires_at),
-                token_refresher=make_token_refresher(project_slug),
-                progress_updater=None,
-                request_headers=None
-            )
-            print("[bold green][OK] Download completed successfully![/bold green]")
-        except Exception as e:
-            print(f"[bold red]ERROR: Download failed: {e}[/bold red]")
-            raise typer.Exit(1)
+        MAX_FILES_PER_BATCH = 100
+        MAX_BYTES_PER_BATCH = 10 * 1024 * 1024 * 1024 # 10 GB
+        
+        batches = []
+        current_batch = []
+        current_batch_size = 0
+        
+        for item in files_to_download:
+            size = item[2]
+            if size >= MAX_BYTES_PER_BATCH and not current_batch:
+                batches.append([item])
+                continue
+                
+            if len(current_batch) >= MAX_FILES_PER_BATCH or current_batch_size + size > MAX_BYTES_PER_BATCH:
+                batches.append(current_batch)
+                current_batch = []
+                current_batch_size = 0
+                
+            current_batch.append(item)
+            current_batch_size += size
+            
+        if current_batch:
+            batches.append(current_batch)
+
+        print(f"[bold cyan]Downloading {len(files_to_download)} files in {len(batches)} batches using hf-xet...[/bold cyan]")
+        
+        refresh_url = f"{server_url.rstrip('/')}/api/v1/oauth/device/cas-token/"
+        refresh_headers = {"Authorization": f"Bearer {cas_token}"}
+        
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+        ) as progress:
+            total_size = sum(item[2] for item in files_to_download)
+            overall_task = progress.add_task("[green]Total Download Progress...", total=total_size)
+            
+            completed_in_previous_batches = 0
+            
+            session = hf_xet.XetSession()
+            for batch_index, batch_items in enumerate(batches, 1):
+                progress.print(f"[cyan]Processing batch {batch_index}/{len(batches)}...[/cyan]")
+                
+                # capture current completed_in_previous_batches in a local scope to avoid late binding issues
+                file_tasks = {}
+                
+                def make_progress_handler(base_completed):
+                    def on_progress(group_report, item_reports):
+                        progress.update(overall_task, completed=base_completed + group_report.total_bytes_completed)
+                        for item_id, item in item_reports.items():
+                            if item_id not in file_tasks:
+                                file_tasks[item_id] = progress.add_task(f"[blue]{item.item_name}", total=item.total_bytes)
+                            
+                            progress.update(file_tasks[item_id], completed=item.bytes_completed)
+                            
+                            # Hide completed tasks to keep the UI clean when downloading thousands of files
+                            if item.bytes_completed >= item.total_bytes:
+                                progress.update(file_tasks[item_id], visible=False)
+                    return on_progress
+                    
+                try:
+                    with session.new_file_download_group(
+                        endpoint=cas_endpoint,
+                        token=cas_token,
+                        token_expiry_unix_secs=expires_at,
+                        token_refresh_url=refresh_url,
+                        token_refresh_headers=refresh_headers,
+                        progress_callback=make_progress_handler(completed_in_previous_batches),
+                        progress_interval_ms=500,
+                    ) as group:
+                        for dest_path, hash_val, size_val in batch_items:
+                            info = hf_xet.XetFileInfo(hash_val, size_val)
+                            group.start_download_file(info, dest_path)
+                            
+                    batch_size = sum(item[2] for item in batch_items)
+                    completed_in_previous_batches += batch_size
+                    progress.update(overall_task, completed=completed_in_previous_batches)
+                    progress.print(f"[bold green][OK] Batch {batch_index} completed successfully![/bold green]")
+                except Exception as e:
+                    progress.print(f"[bold red]ERROR: Download failed for batch {batch_index}: {e}[/bold red]")
+                    raise typer.Exit(1)
+
+        print("[bold green][OK] Download completed successfully![/bold green]")
 
     else:
         # Upload flow: local source -> acc://[project_slug]/[remote_path]
@@ -456,65 +516,137 @@ def copy(
             print("[bold yellow]No files to upload.[/bold yellow]")
             raise typer.Exit(0)
 
-        print(f"[bold cyan]Uploading {len(local_paths)} files using hf-xet...[/bold cyan]")
-        try:
-            upload_results = hf_xet.upload_files(
-                file_paths=[str(p) for p in local_paths],
-                endpoint=cas_endpoint,
-                token_info=(cas_token, expires_at),
-                token_refresher=make_token_refresher(project_slug),
-                progress_updater=None,
-                _repo_type=None,
-                request_headers=None,
-                sha256s=None,
-                skip_sha256=False
-            )
-        except Exception as e:
-            print(f"[bold red]ERROR: Upload failed: {e}[/bold red]")
-            raise typer.Exit(1)
+        MAX_FILES_PER_BATCH = 100
+        MAX_BYTES_PER_BATCH = 10 * 1024 * 1024 * 1024 # 10 GB
+        
+        batches = []
+        current_batch_paths = []
+        current_batch_remote = []
+        current_batch_size = 0
+        
+        for local_p, remote_n in zip(local_paths, remote_filenames):
+            size = local_p.stat().st_size
+            if size >= MAX_BYTES_PER_BATCH and not current_batch_paths:
+                batches.append(([local_p], [remote_n]))
+                continue
+                
+            if len(current_batch_paths) >= MAX_FILES_PER_BATCH or current_batch_size + size > MAX_BYTES_PER_BATCH:
+                batches.append((current_batch_paths, current_batch_remote))
+                current_batch_paths = []
+                current_batch_remote = []
+                current_batch_size = 0
+                
+            current_batch_paths.append(local_p)
+            current_batch_remote.append(remote_n)
+            current_batch_size += size
+            
+        if current_batch_paths:
+            batches.append((current_batch_paths, current_batch_remote))
 
-        # Compute SHA-256 locally and register metadata in database
-        print("[cyan]Computing SHA-256 hashes and registering metadata...[/cyan]")
-        registration_items = []
-        for local_path, remote_filename, upload_info in zip(local_paths, remote_filenames, upload_results):
-            sha256_hash = compute_sha256(str(local_path))
-            registration_items.append({
-                "filename": f"{project_slug}/{remote_filename}",
-                "merkle_hash": upload_info.hash,
-                "sha256": sha256_hash,
-                "file_size": upload_info.file_size,
-                "content_type": "application/octet-stream"
-            })
+        print(f"[bold cyan]Uploading {len(local_paths)} files in {len(batches)} batches using hf-xet...[/bold cyan]")
+        
+        refresh_url = f"{server_url.rstrip('/')}/api/v1/oauth/device/cas-token/"
+        refresh_headers = {"Authorization": f"Bearer {cas_token}"}
+        
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+        ) as progress:
+            total_size = sum(p.stat().st_size for p in local_paths)
+            overall_task = progress.add_task("[green]Total Upload Progress...", total=total_size)
+            
+            completed_in_previous_batches = 0
+            
+            session = hf_xet.XetSession()
+            for batch_index, (b_paths, b_remotes) in enumerate(batches, 1):
+                progress.print(f"[cyan]Processing batch {batch_index}/{len(batches)}...[/cyan]")
+                
+                file_tasks = {}
+                
+                def make_progress_handler(base_completed):
+                    def on_progress(group_report, item_reports):
+                        progress.update(overall_task, completed=base_completed + group_report.total_bytes_completed)
+                        for item_id, item in item_reports.items():
+                            if item_id not in file_tasks:
+                                file_tasks[item_id] = progress.add_task(f"[blue]{item.item_name}", total=item.total_bytes)
+                            
+                            progress.update(file_tasks[item_id], completed=item.bytes_completed)
+                            
+                            # Hide completed tasks to keep the UI clean
+                            if item.bytes_completed >= item.total_bytes:
+                                progress.update(file_tasks[item_id], visible=False)
+                    return on_progress
+                    
+                try:
+                    with session.new_upload_commit(
+                        endpoint=cas_endpoint,
+                        token=cas_token,
+                        token_expiry_unix_secs=expires_at,
+                        token_refresh_url=refresh_url,
+                        token_refresh_headers=refresh_headers,
+                        progress_callback=make_progress_handler(completed_in_previous_batches),
+                        progress_interval_ms=500,
+                    ) as commit:
+                        handles = []
+                        for p in b_paths:
+                            sha = compute_sha256(str(p))
+                            h = commit.start_upload_file(str(p), sha256=sha)
+                            handles.append((p, sha, h))
+                        
+                    upload_results = [(p, sha, h.result()) for p, sha, h in handles]
+                except Exception as e:
+                    progress.print(f"[bold red]ERROR: Upload failed for batch {batch_index}: {e}[/bold red]")
+                    raise typer.Exit(1)
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-Project-Slug": project_slug,
-            "Authorization": f"Bearer {cas_token}"
-        }
+                progress.print("[cyan]Computing SHA-256 hashes and registering metadata for batch...[/cyan]")
+                registration_items = []
+                for local_path, remote_filename, (p, sha256_hash, upload_info) in zip(b_paths, b_remotes, upload_results):
+                    registration_items.append({
+                        "filename": f"{project_slug}/{remote_filename}",
+                        "merkle_hash": upload_info.xet_info.hash,
+                        "sha256": sha256_hash,
+                        "file_size": upload_info.xet_info.file_size,
+                        "content_type": "application/octet-stream"
+                    })
 
-        try:
-            response = requests.post(
-                register_url,
-                json={"items": registration_items},
-                headers=headers,
-                verify=(not ACCLI_DEBUG)
-            )
-            response.raise_for_status()
-            print("[bold green][OK] Upload and bulk metadata registration completed successfully![/bold green]")
-        except requests.exceptions.HTTPError as e:
-            detail = None
-            try:
-                detail = e.response.json().get("detail")
-            except Exception:
-                pass
-            if detail:
-                print(f"[bold red]ERROR: Bulk metadata registration failed: {detail}[/bold red]")
-            else:
-                print(f"[bold red]ERROR: Bulk metadata registration failed: {e}[/bold red]")
-            raise typer.Exit(1)
-        except Exception as e:
-            print(f"[bold red]ERROR: Bulk metadata registration failed: {e}[/bold red]")
-            raise typer.Exit(1)
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Project-Slug": project_slug,
+                    "Authorization": f"Bearer {cas_token}"
+                }
+
+                try:
+                    response = requests.post(
+                        register_url,
+                        json={"items": registration_items},
+                        headers=headers,
+                        verify=(not ACCLI_DEBUG)
+                    )
+                    response.raise_for_status()
+                    
+                    batch_size = sum(p.stat().st_size for p in b_paths)
+                    completed_in_previous_batches += batch_size
+                    progress.update(overall_task, completed=completed_in_previous_batches)
+                    
+                    progress.print(f"[bold green][OK] Batch {batch_index} registered successfully![/bold green]")
+                except requests.exceptions.HTTPError as e:
+                    detail = None
+                    try:
+                        detail = e.response.json().get("detail")
+                    except Exception:
+                        pass
+                    if detail:
+                        progress.print(f"[bold red]ERROR: Bulk metadata registration failed for batch {batch_index}: {detail}[/bold red]")
+                    else:
+                        progress.print(f"[bold red]ERROR: Bulk metadata registration failed for batch {batch_index}: {e}[/bold red]")
+                    raise typer.Exit(1)
+                except Exception as e:
+                    progress.print(f"[bold red]ERROR: Bulk metadata registration failed for batch {batch_index}: {e}[/bold red]")
+                    raise typer.Exit(1)
+
+        print("[bold green][OK] Upload completed successfully![/bold green]")
 
 
 # --- Mount commands group ---
