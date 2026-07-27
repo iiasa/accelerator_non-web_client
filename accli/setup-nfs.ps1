@@ -115,7 +115,6 @@ $env:ACCELERATOR_MOUNT = "1"
 $env:ACC_ENDPOINT = $cfg.server_url
 $env:ACC_CAS_ENDPOINT = "$($cfg.server_url.TrimEnd('/'))/api/xet-cas"
 $env:ACC_TOKEN = $cfg.token
-$env:HF_MOUNT_DISABLE_CACHE = "1"
 if ($cfg.skip_auto_mount) {
     $env:HF_MOUNT_SKIP_AUTO_MOUNT = "1"
 }
