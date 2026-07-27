@@ -35,58 +35,13 @@ if (-not $NfsAlreadyEnabled) {
     Write-Host "[OK] Client for NFS features already enabled." -ForegroundColor Green
 }
 
-# 1.5 Configure Client for NFS (NfsClnt) service startup type to Automatic (Delayed Start)
-# This prevents NFS Client from scanning the network immediately on startup, which can cause extremely long boot times.
-Write-Host "Configuring Client for NFS (NfsClnt) service startup type to Automatic (Delayed Start)..." -ForegroundColor Cyan
+# 1.5 Configure Client for NFS (NfsClnt) service startup type to Manual
+# This prevents NFS Client from starting automatically on Windows boot, avoiding startup delays/hangs.
+# The service will be started on-demand when accli mounts a drive.
+Write-Host "Configuring Client for NFS (NfsClnt) service startup type to Manual..." -ForegroundColor Cyan
 if (Get-Service -Name "NfsClnt" -ErrorAction SilentlyContinue) {
-    if ($PSVersionTable.PSVersion.Major -lt 6) {
-        Write-Host "Windows PowerShell (5.1 or older) detected. PowerShell 7+ is required to configure Automatic (Delayed Start)." -ForegroundColor Yellow
-        
-        # Check if pwsh is already installed
-        $pwshPath = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
-        if (-not (Test-Path $pwshPath)) {
-            $pwshPath = "pwsh.exe"
-            $hasPwsh = Get-Command $pwshPath -ErrorAction SilentlyContinue
-        } else {
-            $hasPwsh = $true
-        }
-
-        if (-not $hasPwsh) {
-            Write-Host "PowerShell 7 is not installed. Downloading and installing silently..." -ForegroundColor Yellow
-            try {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                $installScript = Invoke-RestMethod -Uri "https://aka.ms/install-powershell.ps1"
-                $scriptBlock = [ScriptBlock]::Create($installScript)
-                # Run Microsoft's installer silently using the call operator to bind switches correctly
-                & $scriptBlock -UseMSI -Quiet
-                Write-Host "[OK] PowerShell 7 installed successfully." -ForegroundColor Green
-            } catch {
-                Write-Error "Failed to install PowerShell 7: $_"
-                exit 1
-            }
-            
-            # Re-check standard path after installation
-            $pwshPath = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
-            if (-not (Test-Path $pwshPath)) {
-                Write-Error "Could not find pwsh.exe after installation."
-                exit 1
-            }
-        } else {
-            if ($pwshPath -eq "pwsh.exe") {
-                $pwshPath = (Get-Command pwsh.exe).Source
-            }
-        }
-
-        Write-Host "Restarting script under PowerShell 7..." -ForegroundColor Cyan
-        $repassArgs = @()
-        if ($NfsAlreadyEnabled) { $repassArgs += "-NfsAlreadyEnabled" }
-        if ($RegAlreadyEnabled) { $repassArgs += "-RegAlreadyEnabled" }
-        & $pwshPath -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @repassArgs
-        exit
-    }
-
-    Set-Service -Name "NfsClnt" -StartupType AutomaticDelayedStart -ErrorAction SilentlyContinue
-    Write-Host "[OK] NfsClnt service startup type configured to Automatic (Delayed Start)." -ForegroundColor Green
+    Set-Service -Name "NfsClnt" -StartupType Manual -ErrorAction SilentlyContinue
+    Write-Host "[OK] NfsClnt service startup type configured to Manual." -ForegroundColor Green
 } else {
     Write-Warning "Client for NFS service (NfsClnt) not found. Could not configure startup type."
 }
@@ -160,9 +115,17 @@ $env:ACCELERATOR_MOUNT = "1"
 $env:ACC_ENDPOINT = $cfg.server_url
 $env:ACC_CAS_ENDPOINT = "$($cfg.server_url.TrimEnd('/'))/api/xet-cas"
 $env:ACC_TOKEN = $cfg.token
+$env:HF_MOUNT_DISABLE_CACHE = "1"
 if ($cfg.skip_auto_mount) {
     $env:HF_MOUNT_SKIP_AUTO_MOUNT = "1"
 }
+
+# Ensure NfsClnt service is started before attempting mount
+try {
+    if ((Get-Service -Name "NfsClnt" -ErrorAction SilentlyContinue).Status -ne 'Running') {
+        Start-Service -Name "NfsClnt" -ErrorAction SilentlyContinue
+    }
+} catch {}
 
 # Construct arguments
 $mountArgs = @(
