@@ -409,12 +409,16 @@ def copy(
         refresh_url = f"{server_url.rstrip('/')}/api/v1/oauth/device/cas-token/"
         refresh_headers = {"Authorization": f"Bearer {cas_token}"}
         
-        with Progress(
+        import sys
+        columns = [
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
             TaskProgressColumn(),
             TimeElapsedColumn(),
-        ) as progress:
+        ]
+        if sys.stdout.isatty():
+            columns.insert(1, BarColumn())
+            
+        with Progress(*columns) as progress:
             total_size = sum(item[2] for item in files_to_download)
             overall_task = progress.add_task("[green]Total Download Progress...", total=total_size)
             
@@ -548,12 +552,16 @@ def copy(
         refresh_url = f"{server_url.rstrip('/')}/api/v1/oauth/device/cas-token/"
         refresh_headers = {"Authorization": f"Bearer {cas_token}"}
         
-        with Progress(
+        import sys
+        columns = [
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
             TaskProgressColumn(),
             TimeElapsedColumn(),
-        ) as progress:
+        ]
+        if sys.stdout.isatty():
+            columns.insert(1, BarColumn())
+            
+        with Progress(*columns) as progress:
             total_size = sum(p.stat().st_size for p in local_paths)
             overall_task = progress.add_task("[green]Total Upload Progress...", total=total_size)
             
