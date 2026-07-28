@@ -35,6 +35,17 @@ if (-not $NfsAlreadyEnabled) {
     Write-Host "[OK] Client for NFS features already enabled." -ForegroundColor Green
 }
 
+# 1.5 Configure Client for NFS (NfsClnt) service startup type to Manual
+# This prevents NFS Client from starting automatically on Windows boot, avoiding startup delays/hangs.
+# The service will be started on-demand when accli mounts a drive.
+Write-Host "Configuring Client for NFS (NfsClnt) service startup type to Manual..." -ForegroundColor Cyan
+if (Get-Service -Name "NfsClnt" -ErrorAction SilentlyContinue) {
+    Set-Service -Name "NfsClnt" -StartupType Manual -ErrorAction SilentlyContinue
+    Write-Host "[OK] NfsClnt service startup type configured to Manual." -ForegroundColor Green
+} else {
+    Write-Warning "Client for NFS service (NfsClnt) not found. Could not configure startup type."
+}
+
 # 2. Add Registry value for Linked Connections
 # Allows mapped network drives to be shared between elevated and standard sessions under the same user log-in.
 if (-not $RegAlreadyEnabled) {
@@ -107,6 +118,13 @@ $env:ACC_TOKEN = $cfg.token
 if ($cfg.skip_auto_mount) {
     $env:HF_MOUNT_SKIP_AUTO_MOUNT = "1"
 }
+
+# Ensure NfsClnt service is started before attempting mount
+try {
+    if ((Get-Service -Name "NfsClnt" -ErrorAction SilentlyContinue).Status -ne 'Running') {
+        Start-Service -Name "NfsClnt" -ErrorAction SilentlyContinue
+    }
+} catch {}
 
 # Construct arguments
 $mountArgs = @(
