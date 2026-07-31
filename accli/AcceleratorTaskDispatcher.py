@@ -11,7 +11,7 @@ from pydantic import BaseModel, model_validator
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
     get_token, get_server_url,
-    get_project_slug
+    get_project_slug, exchange_refresh_token
 )
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
@@ -65,9 +65,9 @@ def copy_tree(src, dst):
 
 @lru_cache(maxsize=None)
 def push_folder_job(directory):
-    access_token = get_token()
     server_url = get_server_url()
     project_slug = get_project_slug()
+    _, access_token, _ = exchange_refresh_token(project_slug)
 
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
