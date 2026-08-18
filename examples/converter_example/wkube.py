@@ -13,7 +13,6 @@ for i in my_params:
             command=f"python /app/converter.py___{i}",
             required_cores=1,
             required_ram=1024*1024*1024*8,
-            required_storage_local=1024*1024*1024*15,
             required_storage_workflow=1024*1024*1024*30,
             timeout=60*60,
             conf={
