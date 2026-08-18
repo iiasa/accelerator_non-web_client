@@ -1,3 +1,8 @@
+import urllib3
+from urllib3.exceptions import InsecureRequestWarning
+
+urllib3.disable_warnings(InsecureRequestWarning)
+
 from accli._version import VERSION
 
 from accli.cli import app
