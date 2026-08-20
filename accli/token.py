@@ -39,18 +39,25 @@ def get_db_path():
 
 def save_token_details(token, server_url, webcli_url):
     db_path = get_db_path()
-
-    try:
-        os.remove(db_path)
-    except OSError:
-        pass
-
     db = TinyDB(db_path)
-    db.insert({
-        'token': token,
-        'server_url': server_url,
-        'webcli_url': webcli_url
-    })
+
+    if len(db) > 0:
+        doc = next(iter(db))
+        doc_id = doc.doc_id
+        db.update({
+            'token': token,
+            'server_url': server_url,
+            'webcli_url': webcli_url
+        }, doc_ids=[doc_id])
+        for extra in list(db):
+            if extra.doc_id != doc_id:
+                db.remove(doc_ids=[extra.doc_id])
+    else:
+        db.insert({
+            'token': token,
+            'server_url': server_url,
+            'webcli_url': webcli_url
+        })
 
 
 def get_token():
@@ -154,13 +161,21 @@ def get_github_app_token():
 def set_github_app_token(github_app_token):
     db_path = get_db_path()
     db = TinyDB(db_path)
-    db.update({'github_app_token': github_app_token}, doc_ids=[1])
+    if len(db) > 0:
+        doc = next(iter(db))
+        db.update({'github_app_token': github_app_token}, doc_ids=[doc.doc_id])
+    else:
+        db.insert({'github_app_token': github_app_token})
 
 
 def set_project_slug(project_slug):
     db_path = get_db_path()
     db = TinyDB(db_path)
-    db.update({'project_slug': project_slug}, doc_ids=[1])
+    if len(db) > 0:
+        doc = next(iter(db))
+        db.update({'project_slug': project_slug}, doc_ids=[doc.doc_id])
+    else:
+        db.insert({'project_slug': project_slug})
 
 
 def get_project_slug():
