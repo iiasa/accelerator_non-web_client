@@ -159,15 +159,9 @@ try {
     }
 } catch {}
 
-# Construct arguments
-$pollSecs = if ($cfg.poll_interval_secs) { "$($cfg.poll_interval_secs)" } else { "5" }
-$metaTtl = if ($cfg.metadata_ttl_ms) { "$($cfg.metadata_ttl_ms)" } else { "1000" }
-
 $mountArgs = @(
     "--token-file", $cfg.db_path,
     "--hub-endpoint", $cfg.server_url,
-    "--poll-interval-secs", $pollSecs,
-    "--metadata-ttl-ms", $metaTtl,
     $cfg.mode,
     $cfg.project_slug,
     $cfg.mount_point

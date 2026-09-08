@@ -896,8 +896,6 @@ def mount_start(
             str(hf_mount_bin),
             "--token-file", db_path,
             "--hub-endpoint", server_url,
-            "--poll-interval-secs", "5",
-            "--metadata-ttl-ms", "1000",
             mode,
             project_slug,
             str(mount_point_abs)
@@ -978,8 +976,6 @@ def mount_start(
                     "db_path": db_path,
                     "overlay": overlay,
                     "read_only": read_only,
-                    "poll_interval_secs": 5,
-                    "metadata_ttl_ms": 1000,
                     "skip_auto_mount": True  # Force daemon only, we will map the drive letter in the user session!
                 }
                 config_file = config_dir / "mount_config.json"
