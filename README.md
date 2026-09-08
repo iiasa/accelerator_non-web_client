@@ -97,10 +97,10 @@ Usage: accli [OPTIONS] COMMAND [ARGS]...
 1. Copy and paste certificates from `<control_services_backend>/certs/ca.crt` as
    `./certs/dev-backend.crt` and `<accelerator_service>/minio_certs/ca.crt` as
    `./certs/dev-minio-ca.crt`.
-2. Run
+2. Run as Administrator
    ```
    cd scripts
-   import_certs_certutil.ps1
+   .\import_certs_certutil.ps1
    ```
 
 ### 🛠 Build & Upload
