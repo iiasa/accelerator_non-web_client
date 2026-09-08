@@ -631,6 +631,13 @@ def enable_windows_nfs_features():
         "    if ($null -ne $valUid -and $valUid.AnonymousUid -eq 0 -and $null -ne $valGid -and $valGid.AnonymousGid -eq 0) { $anonEnabled = $true }\n"
         "}\n"
         "\n"
+        "$cacheEnabled = $false\n"
+        "$cachePath = 'HKLM:\\SOFTWARE\\Microsoft\\ClientForNFS\\CurrentVersion\\Users\\Default\\Cache'\n"
+        "if (Test-Path $cachePath) {\n"
+        "    $valDelta = Get-ItemProperty -Path $cachePath -Name 'AttributeTimeDelta' -ErrorAction SilentlyContinue\n"
+        "    if ($null -ne $valDelta -and $valDelta.AttributeTimeDelta -eq 1) { $cacheEnabled = $true }\n"
+        "}\n"
+        "\n"
         "$taskEnabled = $false\n"
         "if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {\n"
         "    $t = Get-ScheduledTask -TaskName 'accli-mount-nfs' -ErrorAction SilentlyContinue\n"
@@ -640,7 +647,7 @@ def enable_windows_nfs_features():
         "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
         "}\n"
         "\n"
-        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;TASK:$taskEnabled\""
+        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;CACHE:$cacheEnabled;TASK:$taskEnabled\""
     )
     
     check_cmd = [
@@ -651,6 +658,7 @@ def enable_windows_nfs_features():
     nfs_ok = False
     reg_ok = False
     anon_ok = False
+    cache_ok = False
     task_ok = False
     
     try:
@@ -663,13 +671,15 @@ def enable_windows_nfs_features():
                 reg_ok = (part.split(':')[1].lower() == 'true')
             elif part.startswith("ANON:"):
                 anon_ok = (part.split(':')[1].lower() == 'true')
+            elif part.startswith("CACHE:"):
+                cache_ok = (part.split(':')[1].lower() == 'true')
             elif part.startswith("TASK:"):
                 task_ok = (part.split(':')[1].lower() == 'true')
     except Exception as e:
         print(f"[yellow]Warning: Could not audit current Windows NFS settings: {e}[/yellow]")
     
-    # Require both general registry settings and Anonymous mappings to be correct
-    reg_ok = reg_ok and anon_ok
+    # Require general registry settings, Anonymous mappings, and Cache policies to be correct
+    reg_ok = reg_ok and anon_ok and cache_ok
     
     if nfs_ok and reg_ok and task_ok:
         print("[bold green][OK] Windows NFS client features, registry policies, and Task Scheduler gateway are already configured.[/bold green]")
@@ -886,6 +896,8 @@ def mount_start(
             str(hf_mount_bin),
             "--token-file", db_path,
             "--hub-endpoint", server_url,
+            "--poll-interval-secs", "5",
+            "--metadata-ttl-ms", "1000",
             mode,
             project_slug,
             str(mount_point_abs)
@@ -966,6 +978,8 @@ def mount_start(
                     "db_path": db_path,
                     "overlay": overlay,
                     "read_only": read_only,
+                    "poll_interval_secs": 5,
+                    "metadata_ttl_ms": 1000,
                     "skip_auto_mount": True  # Force daemon only, we will map the drive letter in the user session!
                 }
                 config_file = config_dir / "mount_config.json"

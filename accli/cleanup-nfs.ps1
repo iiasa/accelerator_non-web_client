@@ -34,10 +34,18 @@ if (Get-Command Unregister-ScheduledTask -ErrorAction SilentlyContinue) {
 Write-Host "[OK] Scheduled Tasks removed." -ForegroundColor Green
 
 # 2. Delete Registry Policy Keys
-Write-Host "Removing registry policies (EnableLinkedConnections, AnonymousUid, AnonymousGid)..." -ForegroundColor Yellow
+Write-Host "Removing registry policies (EnableLinkedConnections, AnonymousUid, AnonymousGid, Cache)..." -ForegroundColor Yellow
 Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLinkedConnections" -ErrorAction SilentlyContinue | Out-Null
 Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "AnonymousUid" -ErrorAction SilentlyContinue | Out-Null
 Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "AnonymousGid" -ErrorAction SilentlyContinue | Out-Null
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "DisableCache" -ErrorAction SilentlyContinue | Out-Null
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "MaxDirCacheSize" -ErrorAction SilentlyContinue | Out-Null
+Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "MaxCacheSize" -ErrorAction SilentlyContinue | Out-Null
+Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users\Default\Cache" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default\Cache" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users" -ErrorAction SilentlyContinue | 
+    Where-Object { $_.PSChildName -like "S-1-5-*" } | 
+    ForEach-Object { Remove-Item -Path "$($_.PSPath)\Cache" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null }
 Write-Host "[OK] Registry policies removed." -ForegroundColor Green
 
 # 3. Delete Config Folder & Helpers
