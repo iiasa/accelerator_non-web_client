@@ -75,6 +75,39 @@ if (-not $RegAlreadyEnabled) {
     Write-Host "[OK] Anonymous UID/GID registry values already configured (skipped)." -ForegroundColor Green
 }
 
+# 2.6 Configure Client for NFS Cache (fast directory refresh without caching delay)
+Write-Host "Configuring Client for NFS directory cache timeouts..." -ForegroundColor Cyan
+
+# Global redirector controls:
+# DisableCache = 0 allows file content caching in memory
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "DisableCache" -Value 0 -PropertyType DWORD -Force | Out-Null
+# MaxDirCacheSize = 0 bypasses directory tree RAM cache so newly created/deleted files appear immediately
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "MaxDirCacheSize" -Value 0 -PropertyType DWORD -Force | Out-Null
+
+$cacheTargets = @(
+    "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users\Default\Cache"
+)
+
+$existingUsers = Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users" -ErrorAction SilentlyContinue | 
+    Where-Object { $_.PSChildName -like "S-1-5-*" }
+
+foreach ($u in $existingUsers) {
+    $cacheTargets += "$($u.PSPath)\Cache"
+}
+
+foreach ($targetPath in $cacheTargets) {
+    if (-not (Test-Path $targetPath)) {
+        New-Item -Path $targetPath -Force | Out-Null
+    }
+    # Enable the attribute cache
+    New-ItemProperty -Path $targetPath -Name "FileAttributeCache" -Value 1 -PropertyType DWORD -Force | Out-Null
+    # AttributeTimeDelta: metadata TTL (10s) to align with --metadata-ttl-ms 10000
+    New-ItemProperty -Path $targetPath -Name "AttributeTimeDelta" -Value 10 -PropertyType DWORD -Force | Out-Null
+    # CacheRefreshInterval: file content cache TTL (10s) so modified files refresh within 10s
+    New-ItemProperty -Path $targetPath -Name "CacheRefreshInterval" -Value 10 -PropertyType DWORD -Force | Out-Null
+}
+Write-Host "[OK] Client for NFS balanced cache policy configured (10s TTL, No Dir Cache)." -ForegroundColor Green
+
 # 3. Create public ProgramData folder and configure permissions for Authenticated Users
 Write-Host "Initializing public accli configuration directory..." -ForegroundColor Cyan
 $configDir = "C:\ProgramData\accli"
@@ -126,7 +159,6 @@ try {
     }
 } catch {}
 
-# Construct arguments
 $mountArgs = @(
     "--token-file", $cfg.db_path,
     "--hub-endpoint", $cfg.server_url,
