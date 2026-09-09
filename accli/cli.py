@@ -604,6 +604,76 @@ def find_available_windows_drive(preferred: str = "W") -> str:
     raise RuntimeError("No available Windows drive letters found.")
 
 
+def start_windows_explorer_refresher(mount_point: str, interval: int):
+    """Starts a lightweight background watcher in the user session that notifies Explorer when remote changes occur."""
+    import sys
+    import subprocess
+    from pathlib import Path
+    
+    refresher_script = Path(__file__).parent / "windows_refresher.py"
+    if not refresher_script.is_file():
+        return
+    
+    # Locate Python interpreter (prefer pythonw to run completely windowless if available)
+    py_exec = sys.executable
+    parent_dir = Path(py_exec).parent
+    pythonw = parent_dir / "pythonw.exe"
+    if pythonw.is_file():
+        executable = str(pythonw)
+    else:
+        executable = py_exec
+        
+    try:
+        # DETACHED_PROCESS (0x00000008) | CREATE_NEW_PROCESS_GROUP (0x00000200) | CREATE_NO_WINDOW (0x08000000)
+        creationflags = 0x08000008 | 0x00000200
+        proc = subprocess.Popen(
+            [executable, str(refresher_script), str(mount_point), str(interval)],
+            creationflags=creationflags,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True
+        )
+        pid_file = Path("C:/ProgramData/accli/refresher.pid")
+        try:
+            pid_file.parent.mkdir(parents=True, exist_ok=True)
+            pid_file.write_text(str(proc.pid), encoding="utf-8")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def stop_windows_explorer_refresher():
+    """Stops any active background Explorer watcher process."""
+    import subprocess
+    from pathlib import Path
+    
+    pid_file = Path("C:/ProgramData/accli/refresher.pid")
+    if pid_file.is_file():
+        try:
+            pid_str = pid_file.read_text(encoding="utf-8").strip()
+            if pid_str:
+                subprocess.run(["taskkill", "/F", "/PID", pid_str], capture_output=True)
+        except Exception:
+            pass
+        try:
+            pid_file.unlink()
+        except Exception:
+            pass
+            
+    # Also clean up any lingering windows_refresher.py processes
+    try:
+        cleanup_cmd = [
+            "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+            "Get-CimInstance Win32_Process -Filter \"name='python.exe' or name='pythonw.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*windows_refresher.py*' } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        ]
+        subprocess.run(cleanup_cmd, capture_output=True)
+    except Exception:
+        pass
+
+
 def enable_windows_nfs_features():
     """Automatically check and enable Windows Client for NFS features, registry key, and Task Scheduler gateway if needed."""
     import subprocess
@@ -996,6 +1066,7 @@ def mount_start(
                     ]
                     mount_res = subprocess.run(mount_cmd, capture_output=True, text=True)
                     if mount_res.returncode == 0:
+                        start_windows_explorer_refresher(str(mount_point_abs), interval=30)
                         print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
                         print("[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
                         return
@@ -1049,6 +1120,7 @@ def mount_start(
                     print(f"[yellow]Please check the log file at {log_file_path} for more details.[/yellow]")
                     raise typer.Exit(1)
                     
+                start_windows_explorer_refresher(str(mount_point_abs), interval=30)
                 print(f"[bold green][OK] NFS mount process spawned successfully (PID: {process.pid}).[/bold green]")
                 print(f"[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
             else:
@@ -1096,6 +1168,7 @@ def mount_start(
                 ]
                 mount_res = subprocess.run(mount_cmd, capture_output=True, text=True)
                 if mount_res.returncode == 0:
+                    start_windows_explorer_refresher(str(mount_point_abs), interval=30)
                     print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
                     print("[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
                 else:
@@ -1232,6 +1305,9 @@ def mount_stop(
             is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
         except Exception:
             is_admin = False
+
+        # 0. Stop Explorer background refresher
+        stop_windows_explorer_refresher()
 
         # 1. Unmap the network drive in the user session
         res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", str(mount_point_abs)], capture_output=True, text=True)
