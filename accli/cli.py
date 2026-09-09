@@ -635,7 +635,7 @@ def enable_windows_nfs_features():
         "$cachePath = 'HKLM:\\SOFTWARE\\Microsoft\\ClientForNFS\\CurrentVersion\\Users\\Default\\Cache'\n"
         "if (Test-Path $cachePath) {\n"
         "    $valDelta = Get-ItemProperty -Path $cachePath -Name 'AttributeTimeDelta' -ErrorAction SilentlyContinue\n"
-        "    if ($null -ne $valDelta -and $valDelta.AttributeTimeDelta -eq 1) { $cacheEnabled = $true }\n"
+        "    if ($null -ne $valDelta -and $valDelta.AttributeTimeDelta -ge 1) { $cacheEnabled = $true }\n"
         "}\n"
         "\n"
         "$taskEnabled = $false\n"

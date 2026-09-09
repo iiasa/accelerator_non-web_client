@@ -78,15 +78,14 @@ if (-not $RegAlreadyEnabled) {
 # 2.6 Configure Client for NFS Cache (fast directory refresh without caching delay)
 Write-Host "Configuring Client for NFS directory cache timeouts..." -ForegroundColor Cyan
 
-# System-level redirector cache knobs (DisableCache=1 bypasses caching, MaxDirCacheSize=0 disables directory cache)
-$clientForNfsDefault = "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default"
-New-ItemProperty -Path $clientForNfsDefault -Name "DisableCache" -Value 1 -PropertyType DWORD -Force | Out-Null
-New-ItemProperty -Path $clientForNfsDefault -Name "MaxDirCacheSize" -Value 0 -PropertyType DWORD -Force | Out-Null
-New-ItemProperty -Path $clientForNfsDefault -Name "MaxCacheSize" -Value 0 -PropertyType DWORD -Force | Out-Null
+# Global redirector controls:
+# DisableCache = 0 allows file content caching in memory
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "DisableCache" -Value 0 -PropertyType DWORD -Force | Out-Null
+# MaxDirCacheSize = 0 bypasses directory tree RAM cache so newly created/deleted files appear immediately
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default" -Name "MaxDirCacheSize" -Value 0 -PropertyType DWORD -Force | Out-Null
 
 $cacheTargets = @(
-    "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users\Default\Cache",
-    "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Default\Cache"
+    "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users\Default\Cache"
 )
 
 $existingUsers = Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\ClientForNFS\CurrentVersion\Users" -ErrorAction SilentlyContinue | 
@@ -100,13 +99,14 @@ foreach ($targetPath in $cacheTargets) {
     if (-not (Test-Path $targetPath)) {
         New-Item -Path $targetPath -Force | Out-Null
     }
-    New-ItemProperty -Path $targetPath -Name "DisableCache" -Value 1 -PropertyType DWORD -Force | Out-Null
-    New-ItemProperty -Path $targetPath -Name "AttributeTimeDelta" -Value 1 -PropertyType DWORD -Force | Out-Null
-    New-ItemProperty -Path $targetPath -Name "CacheRefreshInterval" -Value 1 -PropertyType DWORD -Force | Out-Null
-    New-ItemProperty -Path $targetPath -Name "FileAttributeCache" -Value 0 -PropertyType DWORD -Force | Out-Null
-    New-ItemProperty -Path $targetPath -Name "RemoteWriteCache" -Value 0 -PropertyType DWORD -Force | Out-Null
+    # Enable the attribute cache
+    New-ItemProperty -Path $targetPath -Name "FileAttributeCache" -Value 1 -PropertyType DWORD -Force | Out-Null
+    # AttributeTimeDelta: metadata TTL (10s) to align with --metadata-ttl-ms 10000
+    New-ItemProperty -Path $targetPath -Name "AttributeTimeDelta" -Value 10 -PropertyType DWORD -Force | Out-Null
+    # CacheRefreshInterval: file content cache TTL (10s) so modified files refresh within 10s
+    New-ItemProperty -Path $targetPath -Name "CacheRefreshInterval" -Value 10 -PropertyType DWORD -Force | Out-Null
 }
-Write-Host "[OK] Client for NFS cache policies configured (DisableCache=1, MaxDirCacheSize=0, CacheRefreshInterval=1, AttributeTimeDelta=1)." -ForegroundColor Green
+Write-Host "[OK] Client for NFS balanced cache policy configured (10s TTL, No Dir Cache)." -ForegroundColor Green
 
 # 3. Create public ProgramData folder and configure permissions for Authenticated Users
 Write-Host "Initializing public accli configuration directory..." -ForegroundColor Cyan
