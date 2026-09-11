@@ -25,7 +25,7 @@ def log(msg: str):
     line = f"[{timestamp}] [Watcher] {msg}"
     print(line, flush=True)
     try:
-        log_file = Path.home() / ".accli" / "refresher.log"
+        log_file = Path.home() / ".accli" / "nfs_watcher.log"
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -37,7 +37,7 @@ def get_sync_names(mount_point: str):
     """Returns unique Named Mutex and Event names based on mount drive."""
     drive = Path(mount_point).drive.upper().rstrip(":")
     tag = drive if drive else "DEFAULT"
-    return f"Local\\accli_refresher_{tag}_mutex", f"Local\\accli_refresher_{tag}_stop"
+    return f"Local\\accli_watcher_{tag}_mutex", f"Local\\accli_watcher_{tag}_stop"
 
 
 def get_open_explorer_paths(script_path: Path, mount_point: str) -> list[str]:
@@ -151,7 +151,7 @@ def run_watcher(mount_point: str, interval: float):
     stop_event = kernel32.CreateEventW(None, True, False, stop_event_name)
 
     # 3. Write user-scoped fallback PID file
-    pid_file = Path.home() / ".accli" / "refresher.pid"
+    pid_file = Path.home() / ".accli" / "nfs_watcher.pid"
     try:
         pid_file.parent.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(str(os.getpid()), encoding="utf-8")
@@ -216,7 +216,7 @@ def run_watcher(mount_point: str, interval: float):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python windows_refresher.py <mount_point> <interval_seconds>")
+        print("Usage: python nfs_watcher.py <mount_point> <interval_seconds>")
         sys.exit(1)
     mp = sys.argv[1]
     poll_int = float(sys.argv[2])
