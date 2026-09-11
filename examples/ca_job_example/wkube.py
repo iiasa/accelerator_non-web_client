@@ -7,7 +7,6 @@ task = WKubeTask(
     command="python /app/job.py",
     required_cores=1,
     required_ram=1024*1024*512,
-    required_storage_local=1024*1024*2,
     required_storage_workflow=1024*1024,
     timeout=60*60,
     conf={
