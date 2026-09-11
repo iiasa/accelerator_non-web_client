@@ -2,6 +2,7 @@ import glob
 import importlib.util
 import os
 import re
+import time
 import warnings
 import hashlib
 import json
@@ -633,7 +634,7 @@ def start_windows_explorer_refresher(mount_point: str, interval: int):
             stderr=subprocess.DEVNULL,
             close_fds=True
         )
-        pid_file = Path("C:/ProgramData/accli/refresher.pid")
+        pid_file = Path.home() / ".accli" / "refresher.pid"
         try:
             pid_file.parent.mkdir(parents=True, exist_ok=True)
             pid_file.write_text(str(proc.pid), encoding="utf-8")
@@ -643,16 +644,33 @@ def start_windows_explorer_refresher(mount_point: str, interval: int):
         pass
 
 
-def stop_windows_explorer_refresher():
-    """Stops any active background Explorer watcher process."""
+def stop_windows_explorer_refresher(mount_point: str):
+    """Signals and stops any active background Explorer watcher process."""
+    import os
     import subprocess
     from pathlib import Path
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
     
-    pid_file = Path("C:/ProgramData/accli/refresher.pid")
+    # 1. Graceful cooperative shutdown via Windows Named Event
+    try:
+        EVENT_MODIFY_STATE = 0x0002
+        drive = Path(mount_point).drive.upper().rstrip(":")
+        evt_name = f"Local\\accli_refresher_{drive}_stop" if drive else "Local\\accli_refresher_stop"
+        h_evt = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, evt_name)
+        if h_evt:
+            kernel32.SetEvent(h_evt)
+            kernel32.CloseHandle(h_evt)
+            time.sleep(0.1)
+    except Exception:
+        pass
+
+    # 2. Clean up user-scoped PID file
+    pid_file = Path.home() / ".accli" / "refresher.pid"
     if pid_file.is_file():
         try:
             pid_str = pid_file.read_text(encoding="utf-8").strip()
-            if pid_str:
+            if pid_str and pid_str != str(os.getpid()):
                 subprocess.run(["taskkill", "/F", "/PID", pid_str], capture_output=True)
         except Exception:
             pass
@@ -660,18 +678,6 @@ def stop_windows_explorer_refresher():
             pid_file.unlink()
         except Exception:
             pass
-            
-    # Also clean up any lingering windows_refresher.py processes
-    try:
-        cleanup_cmd = [
-            "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-            "Get-CimInstance Win32_Process -Filter \"name='python.exe' or name='pythonw.exe'\" | "
-            "Where-Object { $_.CommandLine -like '*windows_refresher.py*' } | "
-            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-        ]
-        subprocess.run(cleanup_cmd, capture_output=True)
-    except Exception:
-        pass
 
 
 def enable_windows_nfs_features():
@@ -1053,7 +1059,6 @@ def mount_start(
                 
                 run_res = subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
                 if run_res.returncode == 0:
-                    import time
                     print("[cyan]Waiting for elevated NFS daemon to initialize...[/cyan]")
                     time.sleep(2.0)
                     
@@ -1103,7 +1108,6 @@ def mount_start(
                 )
                 
                 # Startup verification (1-second boot poll)
-                import time
                 time.sleep(1.0)
                 if process.poll() is not None:
                     # Process has already terminated!
@@ -1156,7 +1160,6 @@ def mount_start(
                     raise typer.Exit(1)
                     
                 print("[cyan]Waiting for elevated NFS daemon to initialize...[/cyan]")
-                import time
                 time.sleep(2.0)
                 
                 # Map the network drive in the CURRENT user session (so it is visible in Explorer)
@@ -1307,7 +1310,7 @@ def mount_stop(
             is_admin = False
 
         # 0. Stop Explorer background refresher
-        stop_windows_explorer_refresher()
+        stop_windows_explorer_refresher(str(mount_point_abs))
 
         # 1. Unmap the network drive in the user session
         res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", str(mount_point_abs)], capture_output=True, text=True)
@@ -1329,7 +1332,6 @@ def mount_stop(
             print("[cyan]Triggering elevated NFS daemon termination via Task Scheduler...[/cyan]")
             subprocess.run(["schtasks", "/run", "/tn", "accli-umount-nfs"], capture_output=True)
             # Poll for up to 5 seconds to ensure hf-mount-nfs.exe has fully terminated
-            import time
             for _ in range(10):
                 time.sleep(0.5)
                 task_check = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
