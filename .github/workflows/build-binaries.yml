@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             artifact_name: accli-linux
             binary_name: accli
           - os: windows-latest
@@ -35,13 +35,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Zig
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-20.04'
         uses: goto-bus-stop/setup-zig@v2
         with:
           zig-version: 0.13.0
 
       - name: Install cargo-zigbuild
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-20.04'
         run: pip install cargo-zigbuild
 
       - name: Build Wheel
@@ -72,7 +72,7 @@ jobs:
           export PYAPP_FULL_ISOLATION=1
           export PYAPP_DISTRIBUTION_EMBED=1
           
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          if [ "${{ matrix.os }}" == "ubuntu-20.04" ]; then
             cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
             BINARY_SOURCE="target/x86_64-unknown-linux-gnu/release/pyapp"
           else
@@ -85,26 +85,16 @@ jobs:
           cd ..
           
           # 2. Build GUI binary using PyInstaller
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          pip install dist/*.whl pyinstaller
+          if [ "${{ matrix.os }}" == "ubuntu-20.04" ]; then
             GUI_NAME="accli-gui-linux"
-            docker run --rm -v "$(pwd):/workspace" -w /workspace ubuntu:20.04 bash -c "
-              export DEBIAN_FRONTEND=noninteractive && \
-              apt-get update && apt-get install -y software-properties-common tk-dev binutils curl && \
-              add-apt-repository -y ppa:deadsnakes/ppa && \
-              apt-get update && apt-get install -y python3.12 python3.12-dev python3.12-distutils python3.12-venv && \
-              curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
-              python3.12 -m pip install dist/*.whl pyinstaller && \
-              python3.12 -m PyInstaller --noconsole --onefile --name \"$GUI_NAME\" --collect-all accli accli/gui.py
-            "
+            pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            GUI_NAME="accli-gui-windows.exe"
+            pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
           else
-            pip install dist/*.whl pyinstaller
-            if [ "${{ matrix.os }}" == "windows-latest" ]; then
-              GUI_NAME="accli-gui-windows.exe"
-              pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
-            else
-              GUI_NAME="accli-gui-macos"
-              pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
-            fi
+            GUI_NAME="accli-gui-macos"
+            pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
           fi
           
           cp dist/"$GUI_NAME" dist/binaries/"$GUI_NAME"
