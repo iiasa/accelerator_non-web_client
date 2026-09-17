@@ -87,10 +87,14 @@ jobs:
           # 2. Build GUI binary using PyInstaller
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             GUI_NAME="accli-gui-linux"
-            docker run --rm -v "$(pwd):/workspace" -w /workspace quay.io/pypa/manylinux_2_28_x86_64 bash -c "
-              yum install -y tk-devel binutils && \
-              /opt/python/cp312-cp312/bin/pip install dist/*.whl pyinstaller && \
-              /opt/python/cp312-cp312/bin/pyinstaller --noconsole --onefile --name \"$GUI_NAME\" --collect-all accli accli/gui.py
+            docker run --rm -v "$(pwd):/workspace" -w /workspace ubuntu:20.04 bash -c "
+              export DEBIAN_FRONTEND=noninteractive && \
+              apt-get update && apt-get install -y software-properties-common tk-dev binutils curl && \
+              add-apt-repository -y ppa:deadsnakes/ppa && \
+              apt-get update && apt-get install -y python3.12 python3.12-dev python3.12-distutils python3.12-venv && \
+              curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
+              python3.12 -m pip install dist/*.whl pyinstaller && \
+              python3.12 -m PyInstaller --noconsole --onefile --name \"$GUI_NAME\" --collect-all accli accli/gui.py
             "
           else
             pip install dist/*.whl pyinstaller
