@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             artifact_name: accli-linux
             binary_name: accli
           - os: windows-latest
@@ -35,13 +35,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Zig
-        if: matrix.os == 'ubuntu-20.04'
+        if: matrix.os == 'ubuntu-22.04'
         uses: goto-bus-stop/setup-zig@v2
         with:
           zig-version: 0.13.0
 
       - name: Install cargo-zigbuild
-        if: matrix.os == 'ubuntu-20.04'
+        if: matrix.os == 'ubuntu-22.04'
         run: pip install cargo-zigbuild
 
       - name: Build Wheel
@@ -72,7 +72,7 @@ jobs:
           export PYAPP_FULL_ISOLATION=1
           export PYAPP_DISTRIBUTION_EMBED=1
           
-          if [ "${{ matrix.os }}" == "ubuntu-20.04" ]; then
+          if [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
             cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.17
             BINARY_SOURCE="target/x86_64-unknown-linux-gnu/release/pyapp"
           else
@@ -85,14 +85,26 @@ jobs:
           cd ..
           
           # 2. Build GUI binary using PyInstaller
-          pip install dist/*.whl pyinstaller
-          if [ "${{ matrix.os }}" == "ubuntu-20.04" ]; then
+          if [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
             GUI_NAME="accli-gui-linux"
-            pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
+            docker run --rm -v "$(pwd):/workspace" -w /workspace ubuntu:20.04 bash -c "
+              export DEBIAN_FRONTEND=noninteractive && \
+              apt-get update && apt-get install -y wget build-essential libssl-dev zlib1g-dev \
+              libbz2-dev libreadline-dev libsqlite3-dev tk-dev libncursesw5-dev xz-utils \
+              libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev && \
+              wget https://www.python.org/ftp/python/3.12.6/Python-3.12.6.tgz && \
+              tar -xf Python-3.12.6.tgz && cd Python-3.12.6 && \
+              ./configure --enable-shared --prefix=/usr/local LDFLAGS=\"-Wl,-rpath=/usr/local/lib\" && \
+              make -j\$(nproc) && make altinstall && cd .. && \
+              pip3.12 install dist/*.whl pyinstaller && \
+              python3.12 -m PyInstaller --noconsole --onefile --name \"$GUI_NAME\" --collect-all accli accli/gui.py
+            "
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            pip install dist/*.whl pyinstaller
             GUI_NAME="accli-gui-windows.exe"
             pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
           else
+            pip install dist/*.whl pyinstaller
             GUI_NAME="accli-gui-macos"
             pyinstaller --noconsole --onefile --name "$GUI_NAME" --collect-all accli accli/gui.py
           fi
