@@ -6,6 +6,7 @@ import tempfile
 import fnmatch
 import concurrent.futures
 import json
+from pathlib import Path
 from typing import Optional, Dict, List
 
 import requests
@@ -126,7 +127,7 @@ def push_folder_job(directory, include=None, exclude=None):
     for root, dirs, files in os.walk(repo_dir):
         for file in files:
             file_path = os.path.join(root, file)
-            rel_path = os.path.relpath(file_path, repo_dir)
+            rel_path = Path(file_path).relative_to(repo_dir).as_posix()
             upload_args.append((rel_path, file_path, term_cli_project_service, project_slug))
             
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
