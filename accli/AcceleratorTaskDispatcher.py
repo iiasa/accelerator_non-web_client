@@ -3,11 +3,12 @@ import zipfile
 import hashlib
 import shutil
 import tempfile
+import fnmatch
 from typing import Optional, Dict, List
 
 import requests
 from functools import lru_cache
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, Field
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.token import (
     get_token, get_server_url,
@@ -48,23 +49,38 @@ def get_file_sha1(file_path):
     return sha1_hash.hexdigest()
 
 
-def copy_tree(src, dst):
+def copy_tree(src, dst, include=None, exclude=None, root_src=None):
     """Recursively copy from src to dst, excluding .git folders."""
+    if root_src is None:
+        root_src = src
     for item in os.listdir(src):
         src_path = os.path.join(src, item)
         dst_path = os.path.join(dst, item)
+        rel_path = os.path.relpath(src_path, root_src)
 
         if os.path.isdir(src_path):
             if item == '.git':
                 continue
+            if exclude:
+                excludes = [e.strip() for e in exclude.split(',') if e.strip()]
+                if any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes):
+                    continue
             os.makedirs(dst_path, exist_ok=True)
-            copy_tree(src_path, dst_path)
+            copy_tree(src_path, dst_path, include, exclude, root_src)
         else:
+            if exclude:
+                excludes = [e.strip() for e in exclude.split(',') if e.strip()]
+                if any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes):
+                    continue
+            if include:
+                includes = [i.strip() for i in include.split(',') if i.strip()]
+                if not any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in includes):
+                    continue
             shutil.copy2(src_path, dst_path)
 
 
 @lru_cache(maxsize=None)
-def push_folder_job(directory):
+def push_folder_job(directory, include=None, exclude=None):
     server_url = get_server_url()
     project_slug = get_project_slug()
     _, access_token, _ = exchange_refresh_token(project_slug)
@@ -76,7 +92,7 @@ def push_folder_job(directory):
     )
 
     repo_dir = tempfile.mkdtemp()
-    copy_tree(directory, repo_dir)
+    copy_tree(directory, repo_dir, include, exclude)
 
     if os.path.isfile(f'{repo_dir}/wkube.py'):
         os.remove(f'{repo_dir}/wkube.py')
@@ -152,7 +168,9 @@ class WKubeTaskMeta(BaseModel):
 class WKubeTaskKwargs(BaseModel):
     docker_image: Optional[str] = None
 
-    job_folder: str = './'
+    job_folder: str = Field('./', description="Path to the directory containing job files. Must be a valid existing directory.")
+    include: Optional[str] = Field(None, description="Comma-separated wildcard patterns to include (e.g. '*.py, data/*')")
+    exclude: Optional[str] = Field(None, description="Comma-separated wildcard patterns to exclude (e.g. '*.txt, .venv/*')")
 
     repo_url: Optional[str] = None  # required when docker image is not present
     repo_branch: Optional[str] = None  # required when docker image is not present
@@ -172,6 +190,10 @@ class WKubeTaskKwargs(BaseModel):
         result = super().model_dump(*args, **kwargs)
         if 'job_folder' in result:
             del result['job_folder']
+        if 'include' in result:
+            del result['include']
+        if 'exclude' in result:
+            del result['exclude']
         return result
 
     @model_validator(mode="before")
@@ -179,10 +201,19 @@ class WKubeTaskKwargs(BaseModel):
     def validate_root(cls, values):
         if not values.get('docker_image'):
             job_folder = values.get('job_folder', './')
+            include = values.get('include')
+            exclude = values.get('exclude')
+
+            if not os.path.isdir(job_folder):
+                raise ValueError(
+                    f"Invalid job_folder: '{job_folder}' does not exist or is not a directory. "
+                    f"Help: job_folder must be a valid path. You can also use 'include' and 'exclude' "
+                    f"with comma-separated wildcards (e.g., include='*.py, data/*', exclude='*.txt, .venv/*')."
+                )
 
             if not (values.get('repo_url') and values.get('repo_branch')):
                 remote_url, branch_name = push_folder_job(
-                    os.path.abspath(job_folder)
+                    os.path.abspath(job_folder), include, exclude
                 )
                 values['repo_url'] = remote_url
                 values['repo_branch'] = branch_name
