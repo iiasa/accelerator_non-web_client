@@ -53,9 +53,13 @@ def get_file_sha1(file_path):
 
 
 def copy_tree(src, dst, include=None, exclude=None, root_src=None):
-    """Recursively copy from src to dst, excluding .git folders."""
+    """Recursively copy from src to dst, excluding .git folders. Includes override excludes."""
     if root_src is None:
         root_src = src
+        
+    excludes = [e.strip() for e in exclude.split(',') if e.strip()] if exclude else []
+    includes = [i.strip() for i in include.split(',') if i.strip()] if include else []
+        
     for item in os.listdir(src):
         src_path = os.path.join(src, item)
         dst_path = os.path.join(dst, item)
@@ -64,21 +68,25 @@ def copy_tree(src, dst, include=None, exclude=None, root_src=None):
         if os.path.isdir(src_path):
             if item == '.git':
                 continue
-            if exclude:
-                excludes = [e.strip() for e in exclude.split(',') if e.strip()]
-                if any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes):
-                    continue
+            
+            is_excluded = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes)
+            # Traverse even if excluded as long as includes exist, to find exceptions
+            if is_excluded and not includes:
+                continue
+                
             os.makedirs(dst_path, exist_ok=True)
             copy_tree(src_path, dst_path, include, exclude, root_src)
         else:
-            if exclude:
-                excludes = [e.strip() for e in exclude.split(',') if e.strip()]
-                if any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes):
-                    continue
-            if include:
-                includes = [i.strip() for i in include.split(',') if i.strip()]
-                if not any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in includes):
-                    continue
+            is_excluded = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes)
+            is_included = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in includes)
+            
+            if is_included:
+                pass # Included files override exclude
+            elif is_excluded:
+                continue # Skipped by exclude
+            elif includes:
+                continue # If includes list is provided, only included files are copied
+                
             shutil.copy2(src_path, dst_path)
 
 
@@ -87,10 +95,12 @@ def _upload_cas_file_worker(args):
     file_hash = get_file_sha1(file_path)
     blob_name = f"cas_{file_hash}.blob"
     
+    print(f"Checking {rel_path} (hash: {file_hash[:8]})...")
     presigned_push_url = term_cli_project_service.get_jobstore_push_url(
         project_slug, blob_name
     )
     if presigned_push_url:
+        print(f"Uploading {rel_path}...")
         with open(file_path, 'rb') as f:
             res = requests.put(
                 presigned_push_url,
@@ -98,6 +108,9 @@ def _upload_cas_file_worker(args):
                 verify=False,
             )
             res.raise_for_status()
+        print(f"Uploaded {rel_path}.")
+    else:
+        print(f"Skipped {rel_path} (already in jobstore).")
     
     mode = os.stat(file_path).st_mode
     return {"path": rel_path, "hash": file_hash, "mode": mode}
@@ -130,7 +143,7 @@ def push_folder_job(directory, include=None, exclude=None):
             rel_path = Path(file_path).relative_to(repo_dir).as_posix()
             upload_args.append((rel_path, file_path, term_cli_project_service, project_slug))
             
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         for result in executor.map(_upload_cas_file_worker, upload_args):
             manifest["files"].append(result)
             
