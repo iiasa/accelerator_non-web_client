@@ -4,6 +4,8 @@ import hashlib
 import shutil
 import tempfile
 import fnmatch
+import concurrent.futures
+import json
 from typing import Optional, Dict, List
 
 import requests
@@ -79,6 +81,27 @@ def copy_tree(src, dst, include=None, exclude=None, root_src=None):
             shutil.copy2(src_path, dst_path)
 
 
+def _upload_cas_file_worker(args):
+    rel_path, file_path, term_cli_project_service, project_slug = args
+    file_hash = get_file_sha1(file_path)
+    blob_name = f"cas_{file_hash}.blob"
+    
+    presigned_push_url = term_cli_project_service.get_jobstore_push_url(
+        project_slug, blob_name
+    )
+    if presigned_push_url:
+        with open(file_path, 'rb') as f:
+            res = requests.put(
+                presigned_push_url,
+                data=f,
+                verify=False,
+            )
+            res.raise_for_status()
+    
+    mode = os.stat(file_path).st_mode
+    return {"path": rel_path, "hash": file_hash, "mode": mode}
+
+
 @lru_cache(maxsize=None)
 def push_folder_job(directory, include=None, exclude=None):
     server_url = get_server_url()
@@ -97,19 +120,32 @@ def push_folder_job(directory, include=None, exclude=None):
     if os.path.isfile(f'{repo_dir}/wkube.py'):
         os.remove(f'{repo_dir}/wkube.py')
 
-    temp_zip_path = f"{repo_dir}/temp.zip"
-    compress_folder(repo_dir, temp_zip_path)
-
-    sha256_hash = get_file_sha1(temp_zip_path)
-    final_zip_path = f"{repo_dir}/{sha256_hash}.zip"
-    os.rename(temp_zip_path, final_zip_path)
-
+    manifest = {"type": "cas_manifest", "files": []}
+    
+    upload_args = []
+    for root, dirs, files in os.walk(repo_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, repo_dir)
+            upload_args.append((rel_path, file_path, term_cli_project_service, project_slug))
+            
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for result in executor.map(_upload_cas_file_worker, upload_args):
+            manifest["files"].append(result)
+            
+    manifest_path = os.path.join(repo_dir, "manifest.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f)
+        
+    manifest_hash = get_file_sha1(manifest_path)
+    manifest_name = f"manifest_{manifest_hash}.json"
+    
     presigned_push_url = term_cli_project_service.get_jobstore_push_url(
-        project_slug, f"{sha256_hash}.zip"
+        project_slug, manifest_name
     )
-
+    
     if presigned_push_url:
-        with open(final_zip_path, 'rb') as f:
+        with open(manifest_path, 'rb') as f:
             res = requests.put(
                 presigned_push_url,
                 data=f,
@@ -118,7 +154,7 @@ def push_folder_job(directory, include=None, exclude=None):
             res.raise_for_status()
 
     shutil.rmtree(repo_dir)
-    return f"s3accjobstore://{sha256_hash}.zip", sha256_hash
+    return f"s3accjobstore://{manifest_name}", manifest_hash
 
 
 class JobDispatchModel(BaseModel):
