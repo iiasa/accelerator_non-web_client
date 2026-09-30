@@ -84,8 +84,8 @@ def copy_tree(src, dst, include=None, exclude=None, root_src=None):
                 pass # Included files override exclude
             elif is_excluded:
                 continue # Skipped by exclude
-            elif includes:
-                continue # If includes list is provided, only included files are copied
+            elif includes and not excludes:
+                continue # If ONLY includes list is provided, act as whitelist
                 
             shutil.copy2(src_path, dst_path)
 
