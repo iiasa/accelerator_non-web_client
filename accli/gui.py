@@ -88,7 +88,11 @@ class AccliGuiApp(tk.Tk):
         
         # Checkboxes
         self.style.configure("TCheckbutton", background="#1e1e1e", foreground="#ffffff")
-        self.style.map("TCheckbutton", background=[("active", "#1e1e1e")])
+        self.style.map("TCheckbutton",
+            background=[("active", "#1e1e1e")],
+            indicatorbackground=[("selected", "#007acc"), ("!selected", "#2d2d2d")],
+            indicatorforeground=[("selected", "#ffffff"), ("!selected", "#2d2d2d")]
+        )
 
     def create_widgets(self):
         # Top banner
@@ -217,6 +221,7 @@ class AccliGuiApp(tk.Tk):
             os.environ["ACCLI_DEBUG"] = "1"
         else:
             os.environ.pop("ACCLI_DEBUG", None)
+        self.refresh_login_status()
 
     def refresh_login_status(self):
         from accli.token import get_db_path
@@ -247,13 +252,16 @@ class AccliGuiApp(tk.Tk):
             self.server_entry.configure(state=tk.NORMAL)
             self.status_bar_val.set("Session Status: Disconnected")
             
-        def on_check_done(code, output):
-            self.conn_details_txt.configure(state=tk.NORMAL)
-            self.conn_details_txt.delete("1.0", tk.END)
-            self.conn_details_txt.insert(tk.END, output)
-            self.conn_details_txt.configure(state=tk.DISABLED)
-
-        self.run_cli_async(["status"], on_done=on_check_done, log_to_viewer=False)
+        details = [
+            f"Server URL:     {server_url}",
+            f"Session Status: {'Connected / Logged In' if logged_in else 'Not Logged In'}",
+            f"Token DB Path:  {db_path}",
+            f"Debug Mode:     {'Enabled ($env:ACCLI_DEBUG=\"1\")' if os.environ.get('ACCLI_DEBUG') else 'Disabled'}"
+        ]
+        self.conn_details_txt.configure(state=tk.NORMAL)
+        self.conn_details_txt.delete("1.0", tk.END)
+        self.conn_details_txt.insert(tk.END, "\n".join(details) + "\n")
+        self.conn_details_txt.configure(state=tk.DISABLED)
 
     def action_login(self):
         if hasattr(self, "is_logged_in_state") and self.is_logged_in_state:
