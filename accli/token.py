@@ -3,6 +3,7 @@ import threading
 import time
 import requests
 import typer
+from rich import print
 from tinydb import TinyDB
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
