@@ -122,7 +122,7 @@ class AccliGuiApp(tk.Tk):
                 cmd = [sys.executable] + args
             else:
                 # Script mode
-                cmd = [sys.executable, "-m", "accli.cli"] + args
+                cmd = [sys.executable, "-m", "accli"] + args
 
             if elevate and platform.system() != "Windows":
                 import shutil
@@ -162,11 +162,14 @@ class AccliGuiApp(tk.Tk):
                 process.wait()
                 
                 if on_done:
-                    self.after(0, lambda: on_done(process.returncode, "".join(output_lines)))
+                    ret_code = process.returncode
+                    out_text = "".join(output_lines)
+                    self.after(0, lambda: on_done(ret_code, out_text))
             except Exception as e:
-                self.append_log(f"ERROR executing command: {e}\n")
+                err_text = str(e)
+                self.append_log(f"ERROR executing command: {err_text}\n")
                 if on_done:
-                    self.after(0, lambda: on_done(-1, str(e)))
+                    self.after(0, lambda: on_done(-1, err_text))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -196,9 +199,24 @@ class AccliGuiApp(tk.Tk):
         self.login_btn = ttk.Button(card, text="Authenticate / Login", command=self.action_login)
         self.login_btn.grid(row=0, column=2, padx=10, pady=5)
         
+        self.debug_mode_val = tk.BooleanVar(value=bool(os.environ.get("ACCLI_DEBUG")))
+        self.debug_check = ttk.Checkbutton(
+            card,
+            text="Debug mode",
+            variable=self.debug_mode_val,
+            command=self.on_debug_toggle
+        )
+        self.debug_check.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
+        
         # Connection status details
         self.conn_details_txt = tk.Text(auth_tab, height=12, bg="#2d2d2d", fg="#ffffff", insertbackground="white", font=("Courier New", 10), state=tk.DISABLED)
         self.conn_details_txt.pack(fill=tk.BOTH, expand=True, pady=10)
+
+    def on_debug_toggle(self):
+        if self.debug_mode_val.get():
+            os.environ["ACCLI_DEBUG"] = "1"
+        else:
+            os.environ.pop("ACCLI_DEBUG", None)
 
     def refresh_login_status(self):
         from accli.token import get_db_path
@@ -288,7 +306,7 @@ class AccliGuiApp(tk.Tk):
                 response = requests.post(
                     token_endpoint,
                     json={"device_authorization_code": auth_code.strip()},
-                    verify=True
+                    verify=(not bool(os.environ.get("ACCLI_DEBUG")))
                 )
                 
                 if response.status_code == 400:
@@ -306,8 +324,9 @@ class AccliGuiApp(tk.Tk):
                 self.after(0, lambda: messagebox.showinfo("Success", "Successfully logged in!"))
                 self.after(0, self.refresh_login_status)
             except Exception as e:
-                self.append_log(f"Authentication Failed: {e}\n")
-                self.after(0, lambda: messagebox.showerror("Error", f"Authentication failed: {e}"))
+                err_text = str(e)
+                self.append_log(f"Authentication Failed: {err_text}\n")
+                self.after(0, lambda msg=err_text: messagebox.showerror("Error", f"Authentication failed: {msg}"))
                 self.after(0, self.refresh_login_status)
 
         threading.Thread(target=perform_auth, daemon=True).start()
