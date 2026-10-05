@@ -6,6 +6,7 @@ __pycache__
 .venv
 pyapp-latest/
 .idea
+*.spec
 
 certs/*
 !certs/.gitkeep
