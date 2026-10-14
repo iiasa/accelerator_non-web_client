@@ -449,6 +449,9 @@ class AccliGuiApp(tk.Tk):
         
         mount_btn = ttk.Button(btn_frame, text="Start Mount", command=self.action_mount_start)
         mount_btn.pack(side=tk.LEFT, padx=5)
+
+        stop_form_btn = ttk.Button(btn_frame, text="Stop Mount", style="Stop.TButton", command=self.action_mount_stop)
+        stop_form_btn.pack(side=tk.LEFT, padx=5)
         
         # Right Panel (List of mounts)
         list_frame = ttk.LabelFrame(mounts_tab, text="Active Mounts", padding=10)
@@ -528,20 +531,33 @@ class AccliGuiApp(tk.Tk):
         self.run_cli_async(args, on_done=on_done, elevate=True)
 
     def action_mount_stop(self):
-        selected = self.mounts_list.get(tk.ACTIVE)
-        if not selected:
-            messagebox.showwarning("Warning", "Please select a mount to stop from the list.")
-            return
-            
-        # Parse the mount point from the status line
-        # E.g. "W:       \\\\127.0.0.1\\!" -> "W:"
-        # Or parse folder paths
-        parts = selected.split()
-        if not parts:
-            return
-            
-        mount_point = parts[0]
-        args = ["mount", "stop", mount_point]
+        # 1. Check if user selected an item from the active mounts list
+        mount_point = ""
+        selected_indices = self.mounts_list.curselection()
+        if selected_indices:
+            selected = self.mounts_list.get(selected_indices[0])
+            parts = selected.split()
+            if parts:
+                mount_point = parts[0]
+        elif self.mounts_list.size() > 0:
+            selected = self.mounts_list.get(tk.ACTIVE)
+            if selected:
+                parts = selected.split()
+                if parts:
+                    mount_point = parts[0]
+
+        # 2. If nothing selected or list is empty, fallback to the Mount Point / Drive Letter input field
+        if not mount_point:
+            entered_point = self.mount_point_val.get().strip()
+            if entered_point:
+                mount_point = entered_point
+
+        args = ["mount", "stop"]
+        if mount_point:
+            args.append(mount_point)
+            target_desc = mount_point
+        else:
+            target_desc = "active mount"
         
         self.status_bar_val.set("Stopping mount...")
         self.notebook.select(self.log_tab_idx)
@@ -550,10 +566,10 @@ class AccliGuiApp(tk.Tk):
             self.refresh_mounts_list()
             if code == 0:
                 self.status_bar_val.set("Mount Stopped")
-                messagebox.showinfo("Success", f"Successfully stopped mount at {mount_point}.")
+                messagebox.showinfo("Success", f"Successfully stopped mount ({target_desc}).")
             else:
                 self.status_bar_val.set("Stop Failed")
-                messagebox.showerror("Error", f"Failed to stop mount at {mount_point}.")
+                messagebox.showerror("Error", f"Failed to stop mount ({target_desc}). See logs for details.")
 
         self.run_cli_async(args, on_done=on_done, elevate=True)
 
