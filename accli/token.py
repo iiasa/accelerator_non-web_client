@@ -139,6 +139,13 @@ def exchange_refresh_token(project_slug: str) -> tuple[str, str, int]:
             _cached_expires_at = expires_at
 
             return cas_token, access_token, expires_at
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code in (400, 401, 403):
+                print("[bold red]ERROR: Your session has expired or the token is invalid.[/bold red]")
+                print("[yellow]Please run 'accli login' to authenticate again.[/yellow]")
+                raise typer.Exit(1)
+            print(f"[bold red]ERROR: Failed to authenticate/exchange refresh token: {e}[/bold red]")
+            raise typer.Exit(1)
         except Exception as e:
             print(f"[bold red]ERROR: Failed to authenticate/exchange refresh token: {e}[/bold red]")
             raise typer.Exit(1)
