@@ -1074,7 +1074,12 @@ def mount_start(
     try:
         token = get_token()
         server_url = get_server_url()
+        if not token:
+            print("[bold red]ERROR: No token found. Please run 'accli login' first.[/bold red]")
+            raise typer.Exit(1)
     except Exception as e:
+        if isinstance(e, typer.Exit):
+            raise e
         print(f"[bold red]ERROR: Could not retrieve login details. Please run 'accli login' first. Details: {e}[/bold red]")
         raise typer.Exit(1)
 
