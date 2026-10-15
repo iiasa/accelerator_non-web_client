@@ -746,6 +746,24 @@ def is_nfs_daemon_running() -> bool:
         return False
 
 
+def is_nfs_kernel_driver_active() -> bool:
+    """Check if the Windows Client for NFS kernel redirector driver (NfsRdr) is loaded and running."""
+    import subprocess
+    import shutil
+    if not shutil.which("mount.exe") and not os.path.isfile("C:\\Windows\\System32\\mount.exe"):
+        return False
+    try:
+        res = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True)
+        if "RUNNING" in res.stdout:
+            return True
+        # If stopped, try to start it
+        subprocess.run(["sc.exe", "start", "NfsRdr"], capture_output=True)
+        check = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True)
+        return "RUNNING" in check.stdout
+    except Exception:
+        return False
+
+
 def wait_for_nfs_portmapper(host: str, port: int, timeout: float) -> bool:
     """Poll until the NFS daemon's portmapper is accepting TCP connections and is stable."""
     import socket
@@ -1004,13 +1022,16 @@ def enable_windows_nfs_features():
             
         print("[bold green][OK] Elevated administrative setup completed successfully![/bold green]")
         
-        # Reboot advisory for registry keys or NFS features
-        if not reg_ok or not nfs_ok:
-            print("")
-            print("[bold yellow][WARNING] IMPORTANT: A Windows system restart is required for the new NFS Client features and registry policies to take effect.[/bold yellow]")
-            print("[bold yellow]Please restart your computer, then run 'accli mount start' again to mount your drive passwordlessly![/bold yellow]")
-            print("")
-            raise typer.Exit(0)
+        # Verify if kernel driver is loaded; if active, restart is NOT required and we continue mounting
+        if is_nfs_kernel_driver_active():
+            print("[bold green][OK] Windows NFS kernel redirector is active. Continuing with mount...[/bold green]")
+            return
+
+        print("")
+        print("[bold yellow][WARNING] IMPORTANT: A Windows system restart is required for the new NFS Client features and registry policies to take effect.[/bold yellow]")
+        print("[bold yellow]Please restart your computer, then run 'accli mount start' again to mount your drive passwordlessly![/bold yellow]")
+        print("")
+        raise typer.Exit(0)
             
     except Exception as e:
         if isinstance(e, typer.Exit):
@@ -1573,6 +1594,7 @@ def mount_stop(
         
         if res.returncode == 0 or "successfully" in res.stdout or "successfully" in res.stderr:
             print("[bold green][OK] Mount stopped successfully.[/bold green]")
+            print("[cyan]Note: If mounting again, please allow a few seconds for the Windows NFS network cache to clear.[/cyan]")
         else:
             print("[yellow]Attempted to unmount. Please verify drive status manually using 'umount'.[/yellow]")
             if res.stderr:
