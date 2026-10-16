@@ -52,6 +52,7 @@ def get_open_explorer_paths(script_path: Path, mount_point: str) -> list[str]:
             ],
             capture_output=True,
             text=True,
+            errors="replace",
             creationflags=0x08000000  # CREATE_NO_WINDOW
         )
         if res.returncode == 0 and res.stdout:
@@ -83,6 +84,7 @@ def notify_explorer(script_path: Path, mount_point: str, path_str: str):
                 ],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 creationflags=0x08000000  # CREATE_NO_WINDOW
             )
         except Exception as e:
