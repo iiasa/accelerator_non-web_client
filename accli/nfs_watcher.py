@@ -17,7 +17,7 @@ WAIT_TIMEOUT = 0x00000102
 ERROR_ALREADY_EXISTS = 183
 EVENT_MODIFY_STATE = 0x0002
 
-kernel32 = ctypes.windll.kernel32
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 
 def log(msg: str):
@@ -52,6 +52,7 @@ def get_open_explorer_paths(script_path: Path, mount_point: str) -> list[str]:
             ],
             capture_output=True,
             text=True,
+            errors="replace",
             creationflags=0x08000000  # CREATE_NO_WINDOW
         )
         if res.returncode == 0 and res.stdout:
@@ -83,6 +84,7 @@ def notify_explorer(script_path: Path, mount_point: str, path_str: str):
                 ],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 creationflags=0x08000000  # CREATE_NO_WINDOW
             )
         except Exception as e:
@@ -142,8 +144,9 @@ def run_watcher(mount_point: str, interval: float):
     mutex_name, stop_event_name = get_sync_names(mount_point)
 
     # 1. Single-instance protection via Named Mutex
+    ctypes.set_last_error(0)
     mutex = kernel32.CreateMutexW(None, True, mutex_name)
-    if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+    if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
         log(f"Another watcher is already active for {drive_root} ({mutex_name}). Exiting.")
         sys.exit(0)
 

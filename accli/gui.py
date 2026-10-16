@@ -150,6 +150,7 @@ class AccliGuiApp(tk.Tk):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    errors="replace",
                     bufsize=1,
                     startupinfo=startupinfo
                 )
