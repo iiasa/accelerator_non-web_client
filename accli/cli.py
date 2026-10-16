@@ -736,6 +736,45 @@ def cleanup_stuck_windows_mount_processes():
         pass
 
 
+def cleanup_stale_rdp_namespace_entries():
+    """
+    Remove disconnected/stale RDP redirected drive entries (\\\\tsclient\\<drive>) from the user's
+    Explorer MyComputer Namespace registry key.
+    When Windows Client for NFS (NfsClnt) is active, any dead \\\\tsclient\\<drive> shortcut in
+    'This PC' fails in RDPNP and falls through Windows MUP to NfsClnt, which attempts to resolve
+    'tsclient' via DNS/NetBIOS/RPC and freezes new Explorer 'This PC' views for 21+ seconds.
+    """
+    import subprocess
+    ps_script = (
+        "$activeShares = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)\n"
+        "net use 2>$null | ForEach-Object {\n"
+        "    if ($_ -match '(\\\\\\\\tsclient\\\\[a-zA-Z0-9_$]+)') {\n"
+        "        [void]$activeShares.Add($matches[1])\n"
+        "    }\n"
+        "}\n"
+        "Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SessionInfo\\*\\MyComputer\\Namespace\\*' -ErrorAction SilentlyContinue | ForEach-Object {\n"
+        "    $clsid = $_.PSChildName\n"
+        "    $bag = Get-ItemProperty \"HKCU:\\Software\\Classes\\CLSID\\$clsid\\Instance\\InitPropertyBag\" -ErrorAction SilentlyContinue\n"
+        "    if ($bag -and $bag.Target -and $bag.Target -match '^\\\\\\\\tsclient\\\\') {\n"
+        "        if (-not $activeShares.Contains($bag.Target)) {\n"
+        "            Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    try:
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=5,
+            creationflags=0x08000000  # CREATE_NO_WINDOW
+        )
+    except Exception:
+        pass
+
+
 def is_nfs_daemon_running() -> bool:
     """Check if hf-mount-nfs.exe is currently running."""
     import subprocess
@@ -817,6 +856,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
     Retries with cleanup if Windows NFS client returns a transient error.
     """
     import subprocess
+    cleanup_stale_rdp_namespace_entries()
     target_str = str(mount_point_abs).rstrip("\\/")
     if re.match(r"^[a-zA-Z]$", target_str):
         target_str += ":"
