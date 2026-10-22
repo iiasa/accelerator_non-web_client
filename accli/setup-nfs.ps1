@@ -224,7 +224,7 @@ if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     try {
         $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psActionArgs
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
         
         # Unregister task if already exists to update
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
@@ -253,7 +253,7 @@ if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     try {
         $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psUmountActionArgs
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
         
         Unregister-ScheduledTask -TaskName $umountTaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Register-ScheduledTask -TaskName $umountTaskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null

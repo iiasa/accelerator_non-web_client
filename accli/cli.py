@@ -589,17 +589,30 @@ mount_app = typer.Typer(
 app.add_typer(mount_app, name="mount")
 
 
+def is_windows_drive_mapped(drive: str) -> bool:
+    """Non-blocking check if a Windows drive letter is currently mapped using Win32 GetLogicalDrives()."""
+    import ctypes
+    letter = drive.strip().rstrip(":\\/").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        return os.path.exists(drive)
+    try:
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        return bool(bitmask & (1 << (ord(letter) - ord("A"))))
+    except Exception:
+        return os.path.exists(f"{letter}:\\")
+
+
 def find_available_windows_drive(preferred: str) -> str:
     """Finds an available Windows drive letter, starting with preferred, then checking others."""
     import os
     preferred = preferred.upper()
-    if not os.path.exists(f"{preferred}:\\"):
+    if not is_windows_drive_mapped(preferred):
         return f"{preferred}:"
         
     # Search order: subsequent letters first, then previous descending to D
     search_order = ["X", "Y", "Z"] + [chr(x) for x in range(ord("V"), ord("D") - 1, -1)]
     for letter in search_order:
-        if not os.path.exists(f"{letter}:\\"):
+        if not is_windows_drive_mapped(letter):
             return f"{letter}:"
             
     raise RuntimeError("No available Windows drive letters found.")
@@ -732,6 +745,7 @@ def cleanup_stuck_windows_mount_processes():
         pass
     try:
         subprocess.run(["taskkill", "/f", "/im", "umount.exe"], capture_output=True)
+        subprocess.run(["taskkill", "/f", "/im", "net.exe"], capture_output=True)
     except Exception:
         pass
 
@@ -961,7 +975,17 @@ def enable_windows_nfs_features():
         "$taskEnabled = $false\n"
         "if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {\n"
         "    $t = Get-ScheduledTask -TaskName 'accli-mount-nfs' -ErrorAction SilentlyContinue\n"
-        "    if ($t) { $taskEnabled = $true }\n"
+        "    if ($t) {\n"
+        "        $taskEnabled = $true\n"
+        "        if ($t.Settings.ExecutionTimeLimit -ne 'PT0S' -and $t.Settings.ExecutionTimeLimit -ne 'P0D' -and -not [string]::IsNullOrEmpty($t.Settings.ExecutionTimeLimit)) {\n"
+        "            try {\n"
+        "                $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)\n"
+        "                Set-ScheduledTask -TaskName 'accli-mount-nfs' -Settings $s -ErrorAction Stop | Out-Null\n"
+        "            } catch {\n"
+        "                $taskEnabled = $false\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
         "} else {\n"
         "    $query = schtasks /query /tn 'accli-mount-nfs' 2> $null\n"
         "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
@@ -1171,7 +1195,7 @@ def mount_start(
             mount_point_str = str(mount_point).strip()
             if re.match(r"^[a-zA-Z]:?[\\/]*$", mount_point_str):
                 drive_letter = mount_point_str[0].upper()
-                if os.path.exists(f"{drive_letter}:\\"):
+                if is_windows_drive_mapped(drive_letter):
                     print(f"[yellow]Warning: Drive '{drive_letter}:' is already in use.[/yellow]")
                     try:
                         fallback_drive = find_available_windows_drive("W")
@@ -1559,10 +1583,29 @@ def mount_stop(
 
         # 1. Unmap the network drive in the user session using net use
         # (Avoids sending RPC UMNT packet via umount.exe which causes kernel NFS redirector to queue stale UMNTs)
-        res = subprocess.run(["net", "use", target_str, "/delete", "/y"], capture_output=True, text=True, errors="replace")
-        if res.returncode != 0:
-            res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", target_str], capture_output=True, text=True, errors="replace")
-        subprocess.run(["net", "use", "\\\\127.0.0.1\\!", "/delete", "/y"], capture_output=True)
+        # If the drive is mapped in Windows but the local NFS daemon has died (e.g., 72h task timeout),
+        # Windows NFS kernel redirector (NfsRdr) with mtype=hard will block 'net use /delete' indefinitely
+        # waiting for 127.0.0.1:111. Briefly revive the daemon so the kernel can complete the unmount cleanly.
+        if is_windows_drive_mapped(target_str) and not is_nfs_daemon_running():
+            try:
+                subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, timeout=5)
+                wait_for_nfs_portmapper("127.0.0.1", 111, 5.0)
+            except Exception:
+                pass
+        res = None
+        try:
+            res = subprocess.run(["net", "use", target_str, "/delete", "/y"], capture_output=True, text=True, errors="replace", timeout=10)
+        except subprocess.TimeoutExpired:
+            cleanup_stuck_windows_mount_processes()
+        if res is not None and res.returncode != 0:
+            try:
+                res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", target_str], capture_output=True, text=True, errors="replace", timeout=10)
+            except subprocess.TimeoutExpired:
+                cleanup_stuck_windows_mount_processes()
+        try:
+            subprocess.run(["net", "use", "\\\\127.0.0.1\\!", "/delete", "/y"], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            cleanup_stuck_windows_mount_processes()
 
         cleanup_stuck_windows_mount_processes()
 
@@ -1593,7 +1636,7 @@ def mount_stop(
 
             # Wait until drive letter is released from Windows namespace
             for _ in range(10):
-                if not os.path.exists(f"{target_str}\\"):
+                if not is_windows_drive_mapped(target_str):
                     break
                 time.sleep(0.3)
         else:
@@ -1629,12 +1672,12 @@ def mount_stop(
                     ps_command
                 ], capture_output=True)
         
-        if res.returncode == 0 or (res.stdout and "successfully" in res.stdout) or (res.stderr and "successfully" in res.stderr):
+        if not is_windows_drive_mapped(target_str) or (res is not None and (res.returncode == 0 or (res.stdout and "successfully" in res.stdout) or (res.stderr and "successfully" in res.stderr))):
             print("[bold green][OK] Mount stopped successfully.[/bold green]")
             print("[cyan]Note: If mounting again, please allow a few seconds for the Windows NFS network cache to clear.[/cyan]")
         else:
             print("[yellow]Attempted to unmount. Please verify drive status manually using 'umount'.[/yellow]")
-            if res.stderr:
+            if res is not None and res.stderr:
                 print(f"[red]{res.stderr.strip()}[/red]")
         return
 
@@ -1691,8 +1734,13 @@ def mount_status(
         print("[bold cyan]Active NFS mounts on Windows:[/bold cyan]")
         try:
             # Windows 'mount' command lists active NFS mounts
-            result = subprocess.run(["mount"], capture_output=True, text=True, errors="replace")
-            if result.returncode == 0 and result.stdout and result.stdout.strip():
+            result = None
+            if is_nfs_daemon_running():
+                try:
+                    result = subprocess.run(["mount"], capture_output=True, text=True, errors="replace", timeout=5)
+                except subprocess.TimeoutExpired:
+                    cleanup_stuck_windows_mount_processes()
+            if result is not None and result.returncode == 0 and result.stdout and result.stdout.strip():
                 print(result.stdout)
             else:
                 # Check tasklist for active daemon process
