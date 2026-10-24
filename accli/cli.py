@@ -589,17 +589,30 @@ mount_app = typer.Typer(
 app.add_typer(mount_app, name="mount")
 
 
+def is_windows_drive_mapped(drive: str) -> bool:
+    """Non-blocking check if a Windows drive letter is currently mapped using Win32 GetLogicalDrives()."""
+    import ctypes
+    letter = drive.strip().rstrip(":\\/").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        return os.path.exists(drive)
+    try:
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        return bool(bitmask & (1 << (ord(letter) - ord("A"))))
+    except Exception:
+        return os.path.exists(f"{letter}:\\")
+
+
 def find_available_windows_drive(preferred: str) -> str:
     """Finds an available Windows drive letter, starting with preferred, then checking others."""
     import os
     preferred = preferred.upper()
-    if not os.path.exists(f"{preferred}:\\"):
+    if not is_windows_drive_mapped(preferred):
         return f"{preferred}:"
         
     # Search order: subsequent letters first, then previous descending to D
     search_order = ["X", "Y", "Z"] + [chr(x) for x in range(ord("V"), ord("D") - 1, -1)]
     for letter in search_order:
-        if not os.path.exists(f"{letter}:\\"):
+        if not is_windows_drive_mapped(letter):
             return f"{letter}:"
             
     raise RuntimeError("No available Windows drive letters found.")
@@ -732,6 +745,46 @@ def cleanup_stuck_windows_mount_processes():
         pass
     try:
         subprocess.run(["taskkill", "/f", "/im", "umount.exe"], capture_output=True)
+        subprocess.run(["taskkill", "/f", "/im", "net.exe"], capture_output=True)
+    except Exception:
+        pass
+
+
+def cleanup_stale_rdp_namespace_entries():
+    """
+    Remove disconnected/stale RDP redirected drive entries (\\\\tsclient\\<drive>) from the user's
+    Explorer MyComputer Namespace registry key.
+    When Windows Client for NFS (NfsClnt) is active, any dead \\\\tsclient\\<drive> shortcut in
+    'This PC' fails in RDPNP and falls through Windows MUP to NfsClnt, which attempts to resolve
+    'tsclient' via DNS/NetBIOS/RPC and freezes new Explorer 'This PC' views for 21+ seconds.
+    """
+    import subprocess
+    ps_script = (
+        "$activeShares = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)\n"
+        "net use 2>$null | ForEach-Object {\n"
+        "    if ($_ -match '(\\\\\\\\tsclient\\\\[a-zA-Z0-9_$]+)') {\n"
+        "        [void]$activeShares.Add($matches[1])\n"
+        "    }\n"
+        "}\n"
+        "Get-ChildItem 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SessionInfo\\*\\MyComputer\\Namespace\\*' -ErrorAction SilentlyContinue | ForEach-Object {\n"
+        "    $clsid = $_.PSChildName\n"
+        "    $bag = Get-ItemProperty \"HKCU:\\Software\\Classes\\CLSID\\$clsid\\Instance\\InitPropertyBag\" -ErrorAction SilentlyContinue\n"
+        "    if ($bag -and $bag.Target -and $bag.Target -match '^\\\\\\\\tsclient\\\\') {\n"
+        "        if (-not $activeShares.Contains($bag.Target)) {\n"
+        "            Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    )
+    try:
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=5,
+            creationflags=0x08000000  # CREATE_NO_WINDOW
+        )
     except Exception:
         pass
 
@@ -740,8 +793,8 @@ def is_nfs_daemon_running() -> bool:
     """Check if hf-mount-nfs.exe is currently running."""
     import subprocess
     try:
-        res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
-        return "hf-mount-nfs.exe" in res.stdout
+        res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True, errors="replace")
+        return res.stdout is not None and "hf-mount-nfs.exe" in res.stdout
     except Exception:
         return False
 
@@ -753,13 +806,13 @@ def is_nfs_kernel_driver_active() -> bool:
     if not shutil.which("mount.exe") and not os.path.isfile("C:\\Windows\\System32\\mount.exe"):
         return False
     try:
-        res = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True)
-        if "RUNNING" in res.stdout:
+        res = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True, errors="replace")
+        if res.stdout and "RUNNING" in res.stdout:
             return True
         # If stopped, try to start it
         subprocess.run(["sc.exe", "start", "NfsRdr"], capture_output=True)
-        check = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True)
-        return "RUNNING" in check.stdout
+        check = subprocess.run(["sc.exe", "query", "NfsRdr"], capture_output=True, text=True, errors="replace")
+        return check.stdout is not None and "RUNNING" in check.stdout
     except Exception:
         return False
 
@@ -817,14 +870,16 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
     Retries with cleanup if Windows NFS client returns a transient error.
     """
     import subprocess
+    cleanup_stale_rdp_namespace_entries()
     target_str = str(mount_point_abs).rstrip("\\/")
     if re.match(r"^[a-zA-Z]$", target_str):
         target_str += ":"
 
     mount_cmd = [
         "C:\\Windows\\System32\\mount.exe",
-        "-o", "mtype=hard",
-        "-o", "timeout=10",
+        "-o", "mtype=soft",
+        "-o", "timeout=2",
+        "-o", "retry=2",
         "-o", "rsize=32",
         "-o", "wsize=32",
         "-o", "anon",
@@ -844,7 +899,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
             wait_for_nfs_portmapper("127.0.0.1", 111, 10.0)
 
         try:
-            res = subprocess.run(mount_cmd, capture_output=True, text=True, timeout=15)
+            res = subprocess.run(mount_cmd, capture_output=True, text=True, errors="replace", timeout=15)
             if res.returncode == 0:
                 # Confirm drive is actually mounted and directory listing is populated and queryable
                 drive_ready = False
@@ -854,7 +909,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
                             entries = os.listdir(drive_root)
                             if len(entries) > 0:
                                 drive_ready = True
-                                return True, res.stdout.strip()
+                                return True, (res.stdout or "").strip()
                     except OSError:
                         pass
                     time.sleep(0.5)
@@ -921,7 +976,17 @@ def enable_windows_nfs_features():
         "$taskEnabled = $false\n"
         "if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {\n"
         "    $t = Get-ScheduledTask -TaskName 'accli-mount-nfs' -ErrorAction SilentlyContinue\n"
-        "    if ($t) { $taskEnabled = $true }\n"
+        "    if ($t) {\n"
+        "        $taskEnabled = $true\n"
+        "        if ($t.Settings.ExecutionTimeLimit -ne 'PT0S' -and $t.Settings.ExecutionTimeLimit -ne 'P0D' -and -not [string]::IsNullOrEmpty($t.Settings.ExecutionTimeLimit)) {\n"
+        "            try {\n"
+        "                $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)\n"
+        "                Set-ScheduledTask -TaskName 'accli-mount-nfs' -Settings $s -ErrorAction Stop | Out-Null\n"
+        "            } catch {\n"
+        "                $taskEnabled = $false\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
         "} else {\n"
         "    $query = schtasks /query /tn 'accli-mount-nfs' 2> $null\n"
         "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
@@ -942,8 +1007,8 @@ def enable_windows_nfs_features():
     task_ok = False
     
     try:
-        res = subprocess.run(check_cmd, capture_output=True, text=True, check=True)
-        output = res.stdout.strip()
+        res = subprocess.run(check_cmd, capture_output=True, text=True, errors="replace", check=True)
+        output = (res.stdout or "").strip()
         for part in output.split(';'):
             if part.startswith("NFS:"):
                 nfs_ok = (part.split(':')[1].lower() == 'true')
@@ -1013,7 +1078,7 @@ def enable_windows_nfs_features():
             f"Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"{temp_file_path}\" {params_str}' -Verb RunAs -Wait"
         ]
         
-        result = subprocess.run(elevate_cmd, capture_output=True, text=True)
+        result = subprocess.run(elevate_cmd, capture_output=True, text=True, errors="replace")
         if result.returncode != 0:
             print("[bold red][ERROR] Administrative configuration failed or UAC prompt was denied.[/bold red]")
             if result.stderr:
@@ -1104,26 +1169,19 @@ def mount_start(
 
     # Standardize mount_point and handle defaults / auto-selection
     if sys_name == "Windows":
-        # Check if the daemon is already running to prevent double mount
-        import subprocess
-        try:
-            task_check = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
-            if "hf-mount-nfs.exe" in task_check.stdout:
-                config_file = Path("C:/ProgramData/accli/mount_config.json")
-                active_msg = ""
-                if config_file.is_file():
-                    try:
-                        import json
-                        cfg = json.loads(config_file.read_text(encoding="utf-8"))
-                        active_msg = f" for project '{cfg.get('project_slug')}' at '{cfg.get('mount_point')}'"
-                    except Exception:
-                        pass
-                print(f"[bold red]ERROR: A mount daemon is already running{active_msg}.[/bold red]")
-                print("[yellow]Please run 'accli mount stop' to unmount before starting a new mount.[/yellow]")
-                raise typer.Exit(1)
-        except Exception as e:
-            if isinstance(e, typer.Exit):
-                raise e
+        if is_nfs_daemon_running():
+            config_file = Path("C:/ProgramData/accli/mount_config.json")
+            active_msg = ""
+            if config_file.is_file():
+                try:
+                    import json
+                    cfg = json.loads(config_file.read_text(encoding="utf-8"))
+                    active_msg = f" for project '{cfg.get('project_slug')}' at '{cfg.get('mount_point')}'"
+                except Exception:
+                    pass
+            print(f"[bold red]ERROR: A mount daemon is already running{active_msg}.[/bold red]")
+            print("[yellow]Please run 'accli mount stop' to unmount before starting a new mount.[/yellow]")
+            raise typer.Exit(1)
 
         if mount_point is None:
             # Auto-detect available drive letter starting with W
@@ -1138,7 +1196,7 @@ def mount_start(
             mount_point_str = str(mount_point).strip()
             if re.match(r"^[a-zA-Z]:?[\\/]*$", mount_point_str):
                 drive_letter = mount_point_str[0].upper()
-                if os.path.exists(f"{drive_letter}:\\"):
+                if is_windows_drive_mapped(drive_letter):
                     print(f"[yellow]Warning: Drive '{drive_letter}:' is already in use.[/yellow]")
                     try:
                         fallback_drive = find_available_windows_drive("W")
@@ -1167,6 +1225,12 @@ def mount_start(
     env["ACC_ENDPOINT"] = server_url
     env["ACC_CAS_ENDPOINT"] = f"{server_url.rstrip('/')}/api/xet-cas"
     env["ACC_TOKEN"] = token
+    cache_base = Path("C:/ProgramData/accli/cache") if sys_name == "Windows" else Path.home() / ".accli" / "cache"
+    (cache_base / "xet").mkdir(parents=True, exist_ok=True)
+    (cache_base / "hf-mount").mkdir(parents=True, exist_ok=True)
+    env["HF_XET_CACHE"] = str(cache_base / "xet")
+    env["HF_HOME"] = str(cache_base)
+    env["XDG_CACHE_HOME"] = str(cache_base)
 
     if sys_name == "Windows":
         # Enable Windows NFS Client features if needed
@@ -1188,6 +1252,7 @@ def mount_start(
             str(hf_mount_bin),
             "--token-file", db_path,
             "--hub-endpoint", server_url,
+            "--cache-dir", str(cache_base / "hf-mount"),
             mode,
             project_slug,
             str(mount_point_abs)
@@ -1219,7 +1284,7 @@ def mount_start(
         has_task = False
         if not is_admin:
             try:
-                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
+                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-mount-nfs"], capture_output=True, text=True, errors="replace")
                 if task_check.returncode == 0:
                     has_task = True
             except Exception:
@@ -1273,7 +1338,7 @@ def mount_start(
                 config_file = config_dir / "mount_config.json"
                 config_file.write_text(json.dumps(config_data, indent=2), encoding="utf-8")
                 
-                run_res = subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
+                run_res = subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, text=True, errors="replace")
                 if run_res.returncode == 0:
                     print("[cyan]Waiting for elevated NFS daemon to initialize...[/cyan]")
                     if not ensure_nfs_daemon_stable(15.0):
@@ -1295,8 +1360,8 @@ def mount_start(
                         raise typer.Exit(1)
                 else:
                     print("[bold red][ERROR] Failed to execute Scheduled Task 'accli-mount-nfs'.[/bold red]")
-                    if trigger_res.stderr:
-                        print(f"[red]{trigger_res.stderr.strip()}[/red]")
+                    if run_res.stderr:
+                        print(f"[red]{run_res.stderr.strip()}[/red]")
                     print("[yellow]Falling back to UAC elevation...[/yellow]")
                     has_task = False
             except Exception as e:
@@ -1360,7 +1425,7 @@ def mount_start(
                     ps_command
                 ]
                 
-                elevate_res = subprocess.run(ps_args, capture_output=True, text=True)
+                elevate_res = subprocess.run(ps_args, capture_output=True, text=True, errors="replace")
                 if elevate_res.returncode != 0:
                     print("[bold red][ERROR] Administrative elevation failed or was denied.[/bold red]")
                     print("[yellow]Tip: Please request your IT Administrator to run 'setup-nfs.ps1' to configure the passwordless Task Scheduler gateway.[/yellow]")
@@ -1420,7 +1485,7 @@ def mount_start(
         print(f"[bold cyan]Starting mount for project '[white]{project_slug}[/white]' at '[white]{mount_point_abs}[/white]'...[/bold cyan]")
         import subprocess
         try:
-            result = subprocess.run(args, env=env, capture_output=True, text=True)
+            result = subprocess.run(args, env=env, capture_output=True, text=True, errors="replace")
             if result.returncode == 0:
                 print(f"[bold green][OK] Mount started successfully![/bold green]")
                 if result.stdout:
@@ -1526,10 +1591,29 @@ def mount_stop(
 
         # 1. Unmap the network drive in the user session using net use
         # (Avoids sending RPC UMNT packet via umount.exe which causes kernel NFS redirector to queue stale UMNTs)
-        res = subprocess.run(["net", "use", target_str, "/delete", "/y"], capture_output=True, text=True)
-        if res.returncode != 0:
-            res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", target_str], capture_output=True, text=True)
-        subprocess.run(["net", "use", "\\\\127.0.0.1\\!", "/delete", "/y"], capture_output=True)
+        # If the drive is mapped in Windows but the local NFS daemon has died (e.g., 72h task timeout),
+        # Windows NFS kernel redirector (NfsRdr) with mtype=hard will block 'net use /delete' indefinitely
+        # waiting for 127.0.0.1:111. Briefly revive the daemon so the kernel can complete the unmount cleanly.
+        if is_windows_drive_mapped(target_str) and not is_nfs_daemon_running():
+            try:
+                subprocess.run(["schtasks", "/run", "/tn", "accli-mount-nfs"], capture_output=True, timeout=5)
+                wait_for_nfs_portmapper("127.0.0.1", 111, 5.0)
+            except Exception:
+                pass
+        res = None
+        try:
+            res = subprocess.run(["net", "use", target_str, "/delete", "/y"], capture_output=True, text=True, errors="replace", timeout=10)
+        except subprocess.TimeoutExpired:
+            cleanup_stuck_windows_mount_processes()
+        if res is not None and res.returncode != 0:
+            try:
+                res = subprocess.run(["C:\\Windows\\System32\\umount.exe", "-f", target_str], capture_output=True, text=True, errors="replace", timeout=10)
+            except subprocess.TimeoutExpired:
+                cleanup_stuck_windows_mount_processes()
+        try:
+            subprocess.run(["net", "use", "\\\\127.0.0.1\\!", "/delete", "/y"], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            cleanup_stuck_windows_mount_processes()
 
         cleanup_stuck_windows_mount_processes()
 
@@ -1537,7 +1621,7 @@ def mount_stop(
         has_umount_task = False
         if not is_admin:
             try:
-                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-umount-nfs"], capture_output=True, text=True)
+                task_check = subprocess.run(["schtasks", "/query", "/tn", "accli-umount-nfs"], capture_output=True, text=True, errors="replace")
                 if task_check.returncode == 0:
                     has_umount_task = True
             except Exception:
@@ -1549,19 +1633,18 @@ def mount_stop(
             # Poll for up to 5 seconds to ensure hf-mount-nfs.exe has fully terminated
             for _ in range(10):
                 time.sleep(0.5)
-                task_check = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
-                if "hf-mount-nfs.exe" not in task_check.stdout:
+                if not is_nfs_daemon_running():
                     break
             cleanup_stuck_windows_mount_processes()
             for _ in range(10):
-                sched_check = subprocess.run(["schtasks", "/query", "/tn", "accli-mount-nfs"], capture_output=True, text=True)
-                if "Running" not in sched_check.stdout:
+                sched_check = subprocess.run(["schtasks", "/query", "/tn", "accli-mount-nfs"], capture_output=True, text=True, errors="replace")
+                if not sched_check.stdout or "Running" not in sched_check.stdout:
                     break
                 time.sleep(0.5)
 
             # Wait until drive letter is released from Windows namespace
             for _ in range(10):
-                if not os.path.exists(f"{target_str}\\"):
+                if not is_windows_drive_mapped(target_str):
                     break
                 time.sleep(0.3)
         else:
@@ -1597,12 +1680,12 @@ def mount_stop(
                     ps_command
                 ], capture_output=True)
         
-        if res.returncode == 0 or "successfully" in res.stdout or "successfully" in res.stderr:
+        if not is_windows_drive_mapped(target_str) or (res is not None and (res.returncode == 0 or (res.stdout and "successfully" in res.stdout) or (res.stderr and "successfully" in res.stderr))):
             print("[bold green][OK] Mount stopped successfully.[/bold green]")
             print("[cyan]Note: If mounting again, please allow a few seconds for the Windows NFS network cache to clear.[/cyan]")
         else:
             print("[yellow]Attempted to unmount. Please verify drive status manually using 'umount'.[/yellow]")
-            if res.stderr:
+            if res is not None and res.stderr:
                 print(f"[red]{res.stderr.strip()}[/red]")
         return
 
@@ -1629,7 +1712,7 @@ def mount_stop(
     
     import subprocess
     try:
-        result = subprocess.run(args, capture_output=True, text=True)
+        result = subprocess.run(args, capture_output=True, text=True, errors="replace")
         if result.returncode == 0:
             print(f"[bold green][OK] Mount stopped successfully.[/bold green]")
         else:
@@ -1659,13 +1742,17 @@ def mount_status(
         print("[bold cyan]Active NFS mounts on Windows:[/bold cyan]")
         try:
             # Windows 'mount' command lists active NFS mounts
-            result = subprocess.run(["mount"], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
+            result = None
+            if is_nfs_daemon_running():
+                try:
+                    result = subprocess.run(["mount"], capture_output=True, text=True, errors="replace", timeout=5)
+                except subprocess.TimeoutExpired:
+                    cleanup_stuck_windows_mount_processes()
+            if result is not None and result.returncode == 0 and result.stdout and result.stdout.strip():
                 print(result.stdout)
             else:
                 # Check tasklist for active daemon process
-                task_res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq hf-mount-nfs.exe"], capture_output=True, text=True)
-                if "hf-mount-nfs.exe" in task_res.stdout:
+                if is_nfs_daemon_running():
                     print("[cyan]hf-mount-nfs.exe process is running in the background.[/cyan]")
                 else:
                     print("[cyan]No running mounts found.[/cyan]")
@@ -1697,8 +1784,8 @@ def mount_status(
 
     # 1. Query hf-mount status directly
     try:
-        result = subprocess.run(args, capture_output=True, text=True)
-        if result.returncode == 0:
+        result = subprocess.run(args, capture_output=True, text=True, errors="replace")
+        if result.returncode == 0 and result.stdout:
             stdout = result.stdout.strip()
             if stdout:
                 for line in stdout.splitlines():

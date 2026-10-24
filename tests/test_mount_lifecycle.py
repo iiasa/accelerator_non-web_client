@@ -34,6 +34,7 @@ class TestMountLifecycle(unittest.TestCase):
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout
         )
         print(f"[EXIT CODE] {result.returncode}")

@@ -159,9 +159,21 @@ try {
     }
 } catch {}
 
+# Force unified, accessible cache under C:\ProgramData\accli\cache
+$cacheDir = "C:\ProgramData\accli\cache"
+$hfXetCache = "$cacheDir\xet"
+$hfMountCache = "$cacheDir\hf-mount"
+New-Item -ItemType Directory -Path $hfXetCache -Force | Out-Null
+New-Item -ItemType Directory -Path $hfMountCache -Force | Out-Null
+
+$env:HF_XET_CACHE = $hfXetCache
+$env:HF_HOME = $cacheDir
+$env:XDG_CACHE_HOME = $cacheDir
+
 $mountArgs = @(
     "--token-file", $cfg.db_path,
     "--hub-endpoint", $cfg.server_url,
+    "--cache-dir", $hfMountCache,
     $cfg.mode,
     $cfg.project_slug,
     $cfg.mount_point
@@ -224,7 +236,7 @@ if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     try {
         $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psActionArgs
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
         
         # Unregister task if already exists to update
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
@@ -253,7 +265,7 @@ if (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) {
     try {
         $action = New-ScheduledTaskAction -Execute $psActionPath -Argument $psUmountActionArgs
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
         
         Unregister-ScheduledTask -TaskName $umountTaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Register-ScheduledTask -TaskName $umountTaskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
