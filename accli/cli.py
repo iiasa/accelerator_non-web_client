@@ -1224,6 +1224,12 @@ def mount_start(
     env["ACC_ENDPOINT"] = server_url
     env["ACC_CAS_ENDPOINT"] = f"{server_url.rstrip('/')}/api/xet-cas"
     env["ACC_TOKEN"] = token
+    cache_base = Path("C:/ProgramData/accli/cache") if sys_name == "Windows" else Path.home() / ".accli" / "cache"
+    (cache_base / "xet").mkdir(parents=True, exist_ok=True)
+    (cache_base / "hf-mount").mkdir(parents=True, exist_ok=True)
+    env["HF_XET_CACHE"] = str(cache_base / "xet")
+    env["HF_HOME"] = str(cache_base)
+    env["XDG_CACHE_HOME"] = str(cache_base)
 
     if sys_name == "Windows":
         # Enable Windows NFS Client features if needed
@@ -1245,6 +1251,7 @@ def mount_start(
             str(hf_mount_bin),
             "--token-file", db_path,
             "--hub-endpoint", server_url,
+            "--cache-dir", str(cache_base / "hf-mount"),
             mode,
             project_slug,
             str(mount_point_abs)
