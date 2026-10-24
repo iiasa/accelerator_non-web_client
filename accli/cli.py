@@ -877,8 +877,9 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
 
     mount_cmd = [
         "C:\\Windows\\System32\\mount.exe",
-        "-o", "mtype=hard",
-        "-o", "timeout=10",
+        "-o", "mtype=soft",
+        "-o", "timeout=2",
+        "-o", "retry=2",
         "-o", "rsize=32",
         "-o", "wsize=32",
         "-o", "anon",
