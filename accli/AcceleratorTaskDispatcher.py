@@ -196,7 +196,7 @@ class JobDispatchModel(BaseModel):
     node_id: Optional[str] = None
 
     ignore_duplicate_job: bool = False
-    free_node: bool = False  # Only applies to immediate children jobs
+    free_node: bool = True
 
     children: List['JobDispatchModel'] = []
     callback: Optional['JobDispatchModel'] = None
