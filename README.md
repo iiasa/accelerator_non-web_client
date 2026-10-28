@@ -94,7 +94,7 @@ Usage: accli [OPTIONS] COMMAND [ARGS]...
 
 ### Handling self-signed certificates
 
-Import the certificates from `accelerator_service` into the Windows Root store (run PowerShell as Administrator):
+Import the certificates from `accelerator_service` into the Windows Root store (auto-elevates to Administrator if needed):
 ```powershell
 cd <path to>/accelerator_service/scripts
 .\import_certs_certutil.ps1
