@@ -1,4 +1,5 @@
 import os
+import shutil
 import wget
 import ssl
 from accli import Fs, AjobCliService
@@ -24,6 +25,9 @@ wget.download(file_url2, 'xyz2.xyz')
 
 print('Downloaded2')
 
-Fs.write_file('xyz1.xyz', '1/xyz.xyz')
-Fs.write_file('xyz2.xyz', '2/xyz.xyz')
+# Outputs written under /mnt/wdrv are uploaded by the job agent.
+for source, dest in [('xyz1.xyz', '1/xyz.xyz'), ('xyz2.xyz', '2/xyz.xyz')]:
+    dest_path = os.path.join('/mnt/wdrv', dest)
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    shutil.copy(source, dest_path)
 
