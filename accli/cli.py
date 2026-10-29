@@ -8,6 +8,7 @@ import hashlib
 import json
 import hf_xet
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -16,6 +17,7 @@ from typing import List
 
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
+from accli.log_timeline import build_timeline
 from accli.token import save_token_details, get_token, get_server_url, set_project_slug, get_project_slug, get_db_path, exchange_refresh_token
 from rich import print
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
@@ -173,6 +175,79 @@ def dispatch(
         )
 
     print(f"Dispatched root job #ID: {root_job_id}")
+
+
+LOG_POLL_SECONDS = 5
+
+
+@app.command()
+def logs(
+        job_id: Annotated[int, typer.Argument(help="Job ID.")],
+        project_slug: Annotated[
+            str, typer.Option(..., '-p', help="Project slug. Defaults to the last project used.")] = None,
+        follow: Annotated[
+            bool, typer.Option(..., '--follow', '-f', help="Keep printing new lines until the job finishes.")] = False,
+        source: Annotated[
+            List[str], typer.Option(..., '--source', help="Only show this source, e.g. wkube, celery or podevents. Repeatable.")] = None,
+        attempt: Annotated[int, typer.Option(..., '--attempt', help="Job attempt. Defaults to the latest.")] = None,
+        whole: Annotated[
+            bool, typer.Option(..., '--all', help="Print the whole log instead of only the latest part.")] = False,
+        show_time: Annotated[bool, typer.Option('--time/--no-time', help="Show the time of each line.")] = True,
+):
+    """Print a job's merged log: executor output, scheduler output and cluster events."""
+    project_slug = project_slug or get_project_slug()
+    if not project_slug:
+        print("[bold red]ERROR: No project selected. Pass one with -p.[/bold red]")
+        raise typer.Exit(1)
+
+    _, access_token, _ = exchange_refresh_token(project_slug)
+    service = AcceleratorTerminalCliProjectService(
+        user_token=access_token,
+        server_url=get_server_url(),
+        verify_cert=(not ACCLI_DEBUG)
+    )
+    sources = ",".join(source) if source else None
+    limit = 100 if whole else None
+
+    def fetch(**cursor):
+        manifest = service.get_job_logs(project_slug, job_id, sources=sources, attempt=attempt, limit=limit, **cursor)
+        chunks = [dict(c, text=service.get_log_chunk_text(c["url"])) for c in manifest["chunks"]]
+        return manifest, chunks
+
+    manifest, chunks = fetch()
+    events = list(manifest["events"])
+    if whole:
+        while manifest["has_more_before"]:
+            older, older_chunks = fetch(before=manifest["before"])
+            chunks = older_chunks + chunks
+            events = older["events"] + events
+            manifest = dict(manifest, has_more_before=older["has_more_before"], before=older["before"])
+
+    printed = set()
+
+    def print_new(final):
+        for line in build_timeline(chunks, events):
+            # Hold back a line that is still being written, so it isn't printed cut off.
+            if line.key in printed or (line.partial and not final):
+                continue
+            printed.add(line.key)
+            prefix = ""
+            if show_time:
+                prefix = datetime.fromtimestamp(line.time / 1000).strftime("%H:%M:%S.%f")[:-3] + " "
+            typer.echo(f"{prefix}{line.source:<9} {line.text}")
+
+    after = manifest["after"]
+    completed = manifest["job_completed"]
+    print_new(final=completed or not follow)
+
+    while follow and not completed and after:
+        time.sleep(LOG_POLL_SECONDS)
+        manifest, new_chunks = fetch(after=after)
+        chunks += new_chunks
+        events += manifest["events"]
+        after = manifest["after"]
+        completed = manifest["job_completed"]
+        print_new(final=completed)
 
 
 def compute_sha256(filepath: str) -> str:

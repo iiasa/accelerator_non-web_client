@@ -1,0 +1,85 @@
+[
+  {
+    "name": "line split across two chunks is rejoined",
+    "chunks": [
+      {"source": "wkube", "seq": 0, "start": null, "end": "2026-10-29T09:30:10Z", "text": "2026-10-29T09:30:01.000Z\tstarting\n2026-10-29T09:30:09.500Z\tdownloading par"},
+      {"source": "wkube", "seq": 1, "start": "2026-10-29T09:30:10Z", "end": "2026-10-29T09:30:20Z", "text": "t 3 of 5\n2026-10-29T09:30:15.000Z\tdone\n"}
+    ],
+    "events": [],
+    "expected": [
+      ["wkube", "2026-10-29T09:30:01.000Z", "starting"],
+      ["wkube", "2026-10-29T09:30:09.500Z", "downloading part 3 of 5"],
+      ["wkube", "2026-10-29T09:30:15.000Z", "done"]
+    ]
+  },
+  {
+    "name": "oldest loaded chunk starts mid-line because its previous chunk is not loaded",
+    "chunks": [
+      {"source": "wkube", "seq": 5, "start": "2026-10-29T09:31:00Z", "end": "2026-10-29T09:31:10Z", "text": "end of an older line\n2026-10-29T09:31:04.000Z\tnext line\n"}
+    ],
+    "events": [],
+    "expected": [
+      ["wkube", "2026-10-29T09:31:00.000Z", "end of an older line"],
+      ["wkube", "2026-10-29T09:31:04.000Z", "next line"]
+    ]
+  },
+  {
+    "name": "chunk without timestamps spreads its lines between start and end",
+    "chunks": [
+      {"source": "celery", "seq": 0, "start": "2026-10-29T09:30:00Z", "end": "2026-10-29T09:30:10Z", "text": "first\nsecond\n"}
+    ],
+    "events": [],
+    "expected": [
+      ["celery", "2026-10-29T09:30:05.000Z", "first"],
+      ["celery", "2026-10-29T09:30:10.000Z", "second"]
+    ]
+  },
+  {
+    "name": "multiline traceback stays together and an event lands between the right lines",
+    "chunks": [
+      {"source": "wkube", "seq": 0, "start": null, "end": "2026-10-29T09:30:20Z", "text": "2026-10-29T09:30:11.000Z\tFUSE mount ready\n2026-10-29T09:30:16.200Z\tTraceback (most recent call last):\n2026-10-29T09:30:16.200Z\t  File \"run.py\", line 3\n2026-10-29T09:30:16.201Z\tValueError: boom\n"}
+    ],
+    "events": [
+      {"id": "podevents1761730214.a.log", "time": "2026-10-29T09:30:14.402Z", "precise": true, "kind": "Pod", "reason": "Pulled", "message": "image present"}
+    ],
+    "expected": [
+      ["wkube", "2026-10-29T09:30:11.000Z", "FUSE mount ready"],
+      ["events", "2026-10-29T09:30:14.402Z", "Pod · Pulled · image present"],
+      ["wkube", "2026-10-29T09:30:16.200Z", "Traceback (most recent call last):"],
+      ["wkube", "2026-10-29T09:30:16.200Z", "  File \"run.py\", line 3"],
+      ["wkube", "2026-10-29T09:30:16.201Z", "ValueError: boom"]
+    ]
+  },
+  {
+    "name": "second-precision event sorts before executor lines of the same second",
+    "chunks": [
+      {"source": "wkube", "seq": 0, "start": null, "end": "2026-10-29T09:30:20Z", "text": "2026-10-29T09:30:12.000Z\tline at 12.000\n2026-10-29T09:30:12.300Z\tline at 12.300\n"}
+    ],
+    "events": [
+      {"id": "podevents1761730212.b.log", "time": "2026-10-29T09:30:12Z", "precise": false, "kind": "Pod", "reason": "Started", "message": "container started"}
+    ],
+    "expected": [
+      ["events", "2026-10-29T09:30:12.000Z", "Pod · Started · container started"],
+      ["wkube", "2026-10-29T09:30:12.000Z", "line at 12.000"],
+      ["wkube", "2026-10-29T09:30:12.300Z", "line at 12.300"]
+    ]
+  },
+  {
+    "name": "sources interleave by time and duplicates are dropped",
+    "chunks": [
+      {"source": "wkube", "seq": 0, "start": null, "end": "2026-10-29T09:30:20Z", "text": "2026-10-29T09:30:11.000Z\twkube one\n2026-10-29T09:30:13.000Z\twkube two\n"},
+      {"source": "wkube", "seq": 0, "start": null, "end": "2026-10-29T09:30:20Z", "text": "2026-10-29T09:30:11.000Z\twkube one\n2026-10-29T09:30:13.000Z\twkube two\n"},
+      {"source": "celery", "seq": 0, "start": null, "end": "2026-10-29T09:30:20Z", "text": "2026-10-29T09:30:12.000Z\tcelery one\n"}
+    ],
+    "events": [
+      {"id": "podevents1761730205.c.log", "time": "2026-10-29T09:30:05Z", "precise": false, "kind": "Pod", "reason": "Scheduled", "message": ""},
+      {"id": "podevents1761730205.c.log", "time": "2026-10-29T09:30:05Z", "precise": false, "kind": "Pod", "reason": "Scheduled", "message": ""}
+    ],
+    "expected": [
+      ["events", "2026-10-29T09:30:05.000Z", "Pod · Scheduled"],
+      ["wkube", "2026-10-29T09:30:11.000Z", "wkube one"],
+      ["celery", "2026-10-29T09:30:12.000Z", "celery one"],
+      ["wkube", "2026-10-29T09:30:13.000Z", "wkube two"]
+    ]
+  }
+]

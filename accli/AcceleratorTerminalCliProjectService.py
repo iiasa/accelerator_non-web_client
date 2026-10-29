@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from urllib.parse import urlencode
 
 import urllib3
 
@@ -149,6 +150,27 @@ class AcceleratorTerminalCliProjectService:
             raise err
 
         return todict(res.data)['job_id']
+
+    def get_job_logs(self, project_slug, job_id, sources=None, attempt=None, before=None, after=None, limit=None):
+        params = dict(sources=sources, attempt=attempt, before=before, after=after, limit=limit)
+        query = urlencode({k: v for k, v in params.items() if v is not None})
+        res = self.http_client_request(
+            "GET",
+            f"{self.cli_base_url}/{project_slug}/jobs/{job_id}/logs/?{query}",
+            headers=self.common_request_headers
+        )
+        return todict(res.data)
+
+    def get_log_chunk_text(self, url):
+        # Presigned S3 URL: no Accelerator auth header.
+        res = self.http_client.request("GET", url)
+        if res.status >= 400:
+            raise AccAPIError(
+                f"Log chunk download failed :: status_code={res.status}",
+                status_code=res.status,
+                response=res
+            )
+        return res.data.decode("utf-8", errors="replace")
 
     def get_dataset_template_details(self, project_slug, template_slug):
 
