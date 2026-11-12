@@ -1107,7 +1107,56 @@ def ensure_nfs_daemon_stable(timeout: float) -> bool:
     return wait_for_nfs_portmapper("127.0.0.1", 111, timeout)
 
 
-def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool, str]:
+def configure_windows_nfs_drive_cache(drive_str: str):
+    """
+    Configure per-drive Windows Client for NFS registry settings in HKCU before mounting.
+    Disables NfsRdr per-drive lookup/readdir/attribute caching so renamed or recreated
+    directories do not serve stale NFS filehandles from the Windows kernel redirector cache.
+    """
+    letter = drive_str.strip().rstrip(":\\/").upper()
+    if len(letter) != 1 or not letter.isalpha():
+        return
+    try:
+        import winreg
+        base_key_path = f"Software\\Microsoft\\ClientForNFS\\CurrentVersion\\Persistent\\{letter}"
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, base_key_path, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, "NFSLookup", 0, winreg.REG_DWORD, 0)
+            winreg.SetValueEx(k, "NFSReaddir", 0, winreg.REG_DWORD, 0)
+        cache_key_path = f"{base_key_path}\\Cache"
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, cache_key_path, 0, winreg.KEY_SET_VALUE) as ck:
+            winreg.SetValueEx(ck, "FileAttributeCache", 0, winreg.REG_DWORD, 0)
+            winreg.SetValueEx(ck, "AttributeTimeDelta", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(ck, "RemoteWriteCache", 0, winreg.REG_DWORD, 0)
+    except Exception:
+        pass
+
+
+def configure_windows_explorer_drive_label(drive_root: str, label: str = ""):
+    r"""
+    Set the Windows Explorer MountPoints2 label for \\127.0.0.1\! and broadcast shell notifications
+    so Explorer displays the project/share name instead of a generic 'Network Drive (W:)'.
+    """
+    display_label = f"Accelerator ({label})" if label else "Accelerator"
+    try:
+        import winreg
+        for subkey in ("##127.0.0.1#!", "##127.0.0.1#!#"):
+            key_path = f"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\{subkey}"
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as k:
+                winreg.SetValueEx(k, "_LabelFromReg", 0, winreg.REG_SZ, display_label)
+    except Exception:
+        pass
+    try:
+        import ctypes
+        # SHCNE_DRIVEADD (0x00000100), SHCNE_RENAMEFOLDER (0x00020000), SHCNE_UPDATEITEM (0x00002000)
+        # SHCNF_PATHW | SHCNF_FLUSH (0x1005)
+        ctypes.windll.shell32.SHChangeNotify(0x00000100, 0x1005, drive_root, None)
+        ctypes.windll.shell32.SHChangeNotify(0x00020000, 0x1005, drive_root, None)
+        ctypes.windll.shell32.SHChangeNotify(0x00002000, 0x1005, drive_root, None)
+    except Exception:
+        pass
+
+
+def map_windows_network_drive(mount_point_abs, max_attempts: int, label: str = "") -> tuple[bool, str]:
     """
     Attempt to map the NFS share to the requested drive letter using mount.exe.
     Retries with cleanup if Windows NFS client returns a transient error.
@@ -1117,6 +1166,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
     target_str = str(mount_point_abs).rstrip("\\/")
     if re.match(r"^[a-zA-Z]$", target_str):
         target_str += ":"
+    configure_windows_nfs_drive_cache(target_str)
 
     mount_cmd = [
         "C:\\Windows\\System32\\mount.exe",
@@ -1133,6 +1183,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
 
     last_err = ""
     drive_root = str(mount_point_abs).rstrip("\\/") + "\\"
+    configure_windows_explorer_drive_label(drive_root, label)
     for attempt in range(1, max_attempts + 1):
         cleanup_stuck_windows_mount_processes()
 
@@ -1160,6 +1211,7 @@ def map_windows_network_drive(mount_point_abs, max_attempts: int) -> tuple[bool,
                             entries = os.listdir(drive_root)
                             if len(entries) > 0:
                                 drive_ready = True
+                                configure_windows_explorer_drive_label(drive_root, label)
                                 return True, (res.stdout or "").strip()
                     except OSError:
                         pass
@@ -1640,7 +1692,7 @@ def mount_start(
                         raise typer.Exit(1)
                     
                     # Map the network drive in the CURRENT user session (so it is visible in Explorer)
-                    success, err_msg = map_windows_network_drive(mount_point_abs, 5)
+                    success, err_msg = map_windows_network_drive(mount_point_abs, 5, label=project_slug)
                     if success:
                         start_nfs_watcher(str(mount_point_abs), interval=30)
                         print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
@@ -1694,6 +1746,7 @@ def mount_start(
                     print(f"[yellow]Please check the log file at {log_file_path} for more details.[/yellow]")
                     raise typer.Exit(1)
                     
+                configure_windows_explorer_drive_label(str(mount_point_abs).rstrip("\\/") + "\\", label=project_slug)
                 start_nfs_watcher(str(mount_point_abs), interval=30)
                 print(f"[bold green][OK] NFS mount process spawned successfully (PID: {process.pid}).[/bold green]")
                 print(f"[cyan]Use 'umount' or 'accli mount stop' to unmount the drive.[/cyan]")
@@ -1735,7 +1788,7 @@ def mount_start(
                     raise typer.Exit(1)
                 
                 # Map the network drive in the CURRENT user session (so it is visible in Explorer)
-                success, err_msg = map_windows_network_drive(mount_point_abs, 5)
+                success, err_msg = map_windows_network_drive(mount_point_abs, 5, label=project_slug)
                 if success:
                     start_nfs_watcher(str(mount_point_abs), interval=30)
                     print(f"[bold green][OK] NFS mount successfully mapped at [white]{mount_point_abs}[/white]![/bold green]")
