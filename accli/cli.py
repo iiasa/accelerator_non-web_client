@@ -27,6 +27,7 @@ from typing_extensions import Annotated
 
 from ._version import VERSION
 from . import mount_downloader
+from . import xet_cache
 from .version_checker import check_for_updates, get_upgrade_instruction
 
 warnings.filterwarnings('ignore')
@@ -461,6 +462,17 @@ def copy(
     server_url = get_server_url()
     cas_token, access_token, expires_at = exchange_refresh_token(project_slug)
 
+    # Use accli's own per-server Xet cache (the one `mount start` uses), so `accli cache clear`
+    # never touches other Hugging Face tools. hf-xet reads this when a session is created.
+    xet_dir = xet_cache.xet_cache_dir(server_url)
+    xet_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["HF_XET_CACHE"] = str(xet_dir)
+
+    # A stale cache only matters for uploads: stop if the server's storage was cleaned up
+    # since this machine last cleared its cache.
+    if is_dest_remote:
+        xet_cache.check_gc_id(server_url, access_token)
+
     term_cli_project_service = AcceleratorTerminalCliProjectService(
         user_token=access_token,
         server_url=server_url,
@@ -735,6 +747,7 @@ def copy(
             completed_in_previous_batches = 0
             
             session = hf_xet.XetSession()
+            upload_marker = xet_cache.CacheInUse().__enter__()
             for batch_index, (b_paths, b_remotes) in enumerate(batches, 1):
                 progress.print(f"[cyan]Processing batch {batch_index}/{len(batches)}...[/cyan]")
                 
@@ -773,6 +786,8 @@ def copy(
                     upload_results = [(p, sha, h.result()) for p, sha, h in handles]
                 except Exception as e:
                     progress.print(f"[bold red]ERROR: Upload failed for batch {batch_index}: {e}[/bold red]")
+                    if xet_cache.is_shard_rejection(e):
+                        progress.print(xet_cache.SHARD_REJECTED_HINT)
                     raise typer.Exit(1)
 
                 progress.print("[cyan]Computing SHA-256 hashes and registering metadata for batch...[/cyan]")
@@ -820,8 +835,56 @@ def copy(
                 except Exception as e:
                     progress.print(f"[bold red]ERROR: Bulk metadata registration failed for batch {batch_index}: {e}[/bold red]")
                     raise typer.Exit(1)
+            upload_marker.__exit__(None, None, None)
 
         print("[bold green][OK] Upload completed successfully![/bold green]")
+
+
+# --- Cache commands group ---
+cache_app = typer.Typer(
+    help="Inspect or clear accli's local Xet cache.",
+    no_args_is_help=True
+)
+app.add_typer(cache_app, name="cache")
+
+
+def _cache_server_url() -> str:
+    server_url = get_server_url()
+    if not server_url:
+        print("[bold red]ERROR: No server found. Please run 'accli login' first.[/bold red]")
+        raise typer.Exit(1)
+    return server_url
+
+
+@cache_app.command("info")
+def cache_info():
+    """
+    Show the Xet cache folder, its size, and the local vs server GC ID.
+    """
+    server_url = _cache_server_url()
+    try:
+        _, access_token, _ = exchange_refresh_token("")
+    except typer.Exit:
+        access_token = None
+    xet_cache.cache_info(server_url, access_token)
+
+
+@cache_app.command("clear")
+def cache_clear(
+    all_servers: Annotated[bool, typer.Option("--all", help="Delete the whole accli Xet cache, for every server.")] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
+    force: Annotated[bool, typer.Option("--force", help="Clear even if a mount or another accli upload looks active.")] = False,
+):
+    """
+    Delete the Xet cache for the current server, then save the server's GC ID.
+    """
+    server_url = _cache_server_url()
+
+    def fetch_access_token() -> str:
+        _, access_token, _ = exchange_refresh_token("")
+        return access_token
+
+    xet_cache.clear_cache(server_url, fetch_access_token, all_servers=all_servers, yes=yes, force=force)
 
 
 # --- Mount commands group ---
@@ -1506,6 +1569,11 @@ def mount_start(
     print(f"[cyan]Validating project '{project_slug}'...[/cyan]")
     validate_project_slug(server_url, project_slug)
 
+    # hf-mount writes through the same Xet cache: stop if it may reference cleaned-up data.
+    # The access token from validation is cached in memory, so this makes no extra request.
+    _, mount_access_token, _ = exchange_refresh_token(project_slug)
+    xet_cache.check_gc_id(server_url, mount_access_token)
+
     # Ensure binaries are downloaded and cached
     try:
         mount_downloader.ensure_binaries(version=binary_version, use_fuse=fuse)
@@ -1572,9 +1640,9 @@ def mount_start(
     env["ACC_CAS_ENDPOINT"] = f"{server_url.rstrip('/')}/api/xet-cas"
     env["ACC_TOKEN"] = token
     cache_base = Path("C:/ProgramData/accli/cache") if sys_name == "Windows" else Path.home() / ".accli" / "cache"
-    (cache_base / "xet").mkdir(parents=True, exist_ok=True)
+    xet_cache.xet_cache_dir(server_url).mkdir(parents=True, exist_ok=True)
     (cache_base / "hf-mount").mkdir(parents=True, exist_ok=True)
-    env["HF_XET_CACHE"] = str(cache_base / "xet")
+    env["HF_XET_CACHE"] = str(xet_cache.xet_cache_dir(server_url))
     env["HF_HOME"] = str(cache_base)
     env["XDG_CACHE_HOME"] = str(cache_base)
 
