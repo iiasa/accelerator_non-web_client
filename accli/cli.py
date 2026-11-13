@@ -1,5 +1,6 @@
 import glob
 import importlib.util
+import mimetypes
 import os
 import re
 import time
@@ -428,6 +429,41 @@ def compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
+DEFAULT_CONTENT_TYPE = "application/octet-stream"
+
+# The standard table depends on the system mime files, which differ between an Ubuntu
+# box, a mac and the Windows build, so register the types the platform serves.
+EXTRA_CONTENT_TYPES = {
+    ".csv": "text/csv",
+    ".geojson": "application/geo+json",
+    ".json": "application/json",
+    ".md": "text/markdown",
+    ".parquet": "application/vnd.apache.parquet",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".webp": "image/webp",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+}
+
+for _extension, _content_type in EXTRA_CONTENT_TYPES.items():
+    mimetypes.add_type(_content_type, _extension)
+
+
+def guess_content_type(filename: str) -> str:
+    """Return the content type of a file, read from its name.
+
+    The project space serves the registered type back, so an HTML report must
+    register as text/html or the browser downloads it instead of showing it.
+    A compressed name such as report.html.gz keeps the default type, because the
+    stored bytes are the archive.
+    """
+    content_type, encoding = mimetypes.guess_type(filename)
+    if encoding or not content_type:
+        return DEFAULT_CONTENT_TYPE
+    return content_type
+
+
 
 
 @app.command()
@@ -798,7 +834,7 @@ def copy(
                         "merkle_hash": upload_info.xet_info.hash,
                         "sha256": sha256_hash,
                         "file_size": upload_info.xet_info.file_size,
-                        "content_type": "application/octet-stream"
+                        "content_type": guess_content_type(remote_filename)
                     })
 
                 headers = {
