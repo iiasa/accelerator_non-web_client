@@ -16,6 +16,10 @@ import unittest
 from pathlib import Path
 
 
+@unittest.skipUnless(
+    os.environ.get("ACCLI_TEST_PROJECT"),
+    "Live test: needs 'accli login' and a real project. Set ACCLI_TEST_PROJECT=<project slug> to run it.",
+)
 class TestMountLifecycle(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -25,6 +29,9 @@ class TestMountLifecycle(unittest.TestCase):
         if platform.system() == "Windows" and len(cls.mount_arg) == 1 and cls.mount_arg.isalpha():
             cls.mount_arg += ":"
         cls.mount_path = Path(f"{cls.mount_arg}\\") if platform.system() == "Windows" else Path.home() / "accelerator" / "mnt" / cls.project_slug
+        if platform.system() != "Windows":
+            # Drive letters only exist on Windows; elsewhere mount at the default folder.
+            cls.mount_arg = str(cls.mount_path)
 
     def run_cli(self, args: list, timeout: int):
         cmd = [sys.executable, "-m", "accli"] + args

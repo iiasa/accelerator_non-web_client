@@ -2,6 +2,7 @@ import glob
 import importlib.util
 import os
 import re
+import sys
 import time
 import warnings
 import hashlib
@@ -28,6 +29,7 @@ from typing_extensions import Annotated
 from ._version import VERSION
 from . import mount_downloader
 from . import xet_cache
+from . import internal_certs
 from .version_checker import check_for_updates, get_upgrade_instruction
 
 warnings.filterwarnings('ignore')
@@ -53,6 +55,14 @@ def main_callback(
         typer.Option("--help", "-h", help="Show this message and exit.")
     ] = False,
 ):
+    # Point this process at the certificate bundle that includes IIASA's internal storage
+    # certificate. No prompts here; commands that transfer data call require_storage_cert().
+    if sys.platform.startswith("linux"):
+        try:
+            internal_certs.apply_cert_bundle()
+        except Exception as e:
+            print(f"[yellow]Warning: Could not set up the IIASA storage certificate: {e}[/yellow]")
+
     update_avail, latest = check_for_updates()
     if update_avail:
         instruction = get_upgrade_instruction()
@@ -66,6 +76,31 @@ def main_callback(
     if help or ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
+
+
+def require_storage_cert():
+    """Stop unless IIASA's internal storage certificate is trusted, installing it first if needed.
+
+    Data transfers on the IIASA network go directly to the storage server, which uses this certificate.
+    """
+    try:
+        if internal_certs.ensure_trusted(install=False):
+            return
+        print(f"[yellow]The IIASA storage certificate ({internal_certs.CERT_HOST}) must be installed for data transfer.[/yellow]")
+        if sys.platform == "win32":
+            print("[yellow]Approve the Windows administrator prompt to install it.[/yellow]")
+        elif sys.platform == "darwin":
+            print("[yellow]Enter your Mac password in the dialog to install it.[/yellow]")
+        trusted = internal_certs.ensure_trusted(install=True)
+    except Exception as e:
+        print(f"[bold red]ERROR: Could not set up the IIASA storage certificate: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if not trusted:
+        print("[bold red]ERROR: The IIASA storage certificate was not installed, so data cannot be transferred.[/bold red]")
+        print("[yellow]Run the command again and approve the prompt, or ask your IT administrator to install it.[/yellow]")
+        raise typer.Exit(1)
+    print("[bold green][OK] IIASA storage certificate installed.[/bold green]")
 
 
 def get_size(path):
@@ -449,6 +484,8 @@ def copy(
     if is_src_remote and is_dest_remote:
         print("[bold red]ERROR: Remote-to-remote copy is not supported. One path must be local.[/bold red]")
         raise typer.Exit(1)
+
+    require_storage_cert()
 
     # Resolve project_slug from the remote path
     remote_path_str = source if is_src_remote else destination
@@ -1365,7 +1402,10 @@ def enable_windows_nfs_features():
         "    if ($LASTEXITCODE -eq 0) { $taskEnabled = $true }\n"
         "}\n"
         "\n"
-        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;CACHE:$cacheEnabled;TASK:$taskEnabled\""
+        "\n"
+        f"$certEnabled = Test-Path 'Cert:\\LocalMachine\\Root\\{internal_certs.CERT_SHA1}'\n"
+        "\n"
+        "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;CACHE:$cacheEnabled;TASK:$taskEnabled;CERT:$certEnabled\""
     )
     
     check_cmd = [
@@ -1378,7 +1418,8 @@ def enable_windows_nfs_features():
     anon_ok = False
     cache_ok = False
     task_ok = False
-    
+    cert_ok = False
+
     try:
         res = subprocess.run(check_cmd, capture_output=True, text=True, errors="replace", check=True)
         output = (res.stdout or "").strip()
@@ -1393,13 +1434,15 @@ def enable_windows_nfs_features():
                 cache_ok = (part.split(':')[1].lower() == 'true')
             elif part.startswith("TASK:"):
                 task_ok = (part.split(':')[1].lower() == 'true')
+            elif part.startswith("CERT:"):
+                cert_ok = (part.split(':')[1].lower() == 'true')
     except Exception as e:
         print(f"[yellow]Warning: Could not audit current Windows NFS settings: {e}[/yellow]")
     
     # Require general registry settings, Anonymous mappings, and Cache policies to be correct
     reg_ok = reg_ok and anon_ok and cache_ok
     
-    if nfs_ok and reg_ok and task_ok:
+    if nfs_ok and reg_ok and task_ok and cert_ok:
         # Ensure run-umount-helper.ps1 includes fast nfsclnt termination and NfsRdr/NfsClnt kernel cache flush
         try:
             umount_helper = Path("C:/ProgramData/accli/run-umount-helper.ps1")
@@ -1436,9 +1479,17 @@ def enable_windows_nfs_features():
                     )
         except Exception:
             pass
-        print("[bold green][OK] Windows NFS client features, registry policies, and Task Scheduler gateway are already configured.[/bold green]")
+        print("[bold green][OK] Windows NFS client features, registry policies, Task Scheduler gateway, and IIASA storage certificate are already configured.[/bold green]")
         return
-        
+
+    if nfs_ok and reg_ok and task_ok:
+        # Everything else is set up already (e.g. users from before the certificate was added):
+        # install just the certificate rather than re-running the whole administrator setup.
+        require_storage_cert()
+        return
+
+    if not cert_ok:
+        print(f"[yellow]The IIASA storage certificate ({internal_certs.CERT_HOST}) must be installed for direct data transfer.[/yellow]")
     print("[yellow]Administrative setup is required to configure the Windows NFS mount gateway.[/yellow]")
     print("[italic]A UAC administrator elevation prompt will appear shortly. Please approve it...[/italic]")
     
@@ -1469,13 +1520,21 @@ def enable_windows_nfs_features():
         
     temp_dir = tempfile.gettempdir()
     temp_file_path = os.path.join(temp_dir, "accli_nfs_setup.ps1")
-    
+    temp_cert_path = os.path.join(temp_dir, internal_certs.CERT_FILENAME)
+
     try:
         with open(temp_file_path, "w", encoding="utf-8") as f:
             f.write(setup_script_content)
-            
+
+        try:
+            import shutil
+            shutil.copyfile(internal_certs.cert_path(), temp_cert_path)
+        except Exception as e:
+            print(f"[bold red]ERROR: {e}[/bold red]")
+            raise typer.Exit(1)
+
         # Build arguments for Start-Process to pass state as parameters
-        ps_params = []
+        ps_params = [f'-CertPath "{temp_cert_path}"']
         if nfs_ok:
             ps_params.append("-NfsAlreadyEnabled")
         if reg_ok:
@@ -1494,8 +1553,14 @@ def enable_windows_nfs_features():
                 print(f"[red]{result.stderr.strip()}[/red]")
             raise typer.Exit(1)
             
+        # The elevated script's exit code is not passed back through Start-Process, so check the result directly.
+        if not internal_certs.windows_cert_installed():
+            print(f"[bold red][ERROR] The IIASA storage certificate ({internal_certs.CERT_HOST}) was not installed.[/bold red]")
+            print("[yellow]It is required for direct data transfer. Run 'accli mount start' again and approve the administrator prompt.[/yellow]")
+            raise typer.Exit(1)
+
         print("[bold green][OK] Elevated administrative setup completed successfully![/bold green]")
-        
+
         # Verify if kernel driver is loaded; if active, restart is NOT required and we continue mounting
         if is_nfs_kernel_driver_active():
             print("[bold green][OK] Windows NFS kernel redirector is active. Continuing with mount...[/bold green]")
@@ -1517,11 +1582,12 @@ def enable_windows_nfs_features():
         print("  reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v EnableLinkedConnections /t REG_DWORD /d 1 /f")
         raise typer.Exit(1)
     finally:
-        if os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except Exception:
-                pass
+        for path in (temp_file_path, temp_cert_path):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
 
 
 @mount_app.command("start")
@@ -1632,6 +1698,11 @@ def mount_start(
             print(f"[cyan]No mount point specified. Selected default directory: [bold white]{mount_point_abs}[/bold white][/cyan]")
         else:
             mount_point_abs = mount_point.resolve()
+
+    # Direct data transfer needs IIASA's internal storage certificate to be trusted.
+    # (On Windows this is part of the administrator setup in enable_windows_nfs_features.)
+    if sys_name != "Windows":
+        require_storage_cert()
 
     # Construct environment
     env = os.environ.copy()

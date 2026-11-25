@@ -214,6 +214,24 @@ class AccliGuiApp(tk.Tk):
 
     def run_cli_async(self, args, on_done=None, log_to_viewer=True, elevate=False):
         """Runs the CLI binary in a background thread to prevent UI freezing."""
+        # On Linux without pkexec, elevation falls back to sudo, which cannot ask for a password
+        # without a terminal. Ask for it here (dialogs must run on the main thread) and pass it to sudo.
+        sudo_password = None
+        if elevate and platform.system() == "Linux":
+            import shutil
+            if not shutil.which("pkexec") and os.geteuid() != 0:
+                from tkinter import simpledialog
+                sudo_password = simpledialog.askstring(
+                    "Administrator Password",
+                    "Mounting needs administrator rights.\nEnter your password for sudo:",
+                    show="*",
+                    parent=self,
+                )
+                if sudo_password is None:
+                    if on_done:
+                        on_done(-1, "Cancelled: administrator password not given.")
+                    return
+
         def worker():
             # Determine how to invoke accli
             if getattr(sys, "frozen", False):
@@ -223,11 +241,30 @@ class AccliGuiApp(tk.Tk):
                 # Script mode
                 cmd = [sys.executable, "-m", "accli"] + args
 
-            if elevate and platform.system() != "Windows":
+            if elevate and platform.system() == "Darwin":
+                # sudo cannot ask for a password without a terminal, so use the macOS
+                # administrator password dialog instead. SUDO_USER lets accli find the
+                # user's own login details, as it does under sudo.
+                import getpass
+                import shlex
+                shell_cmd = " ".join(
+                    [f"SUDO_USER={shlex.quote(getpass.getuser())}"] + [shlex.quote(c) for c in cmd]
+                ) + " 2>&1"
+                cmd = [
+                    "osascript",
+                    "-e", "on run argv",
+                    "-e", "do shell script (item 1 of argv) with administrator privileges without altering line endings",
+                    "-e", "end run",
+                    shell_cmd,
+                ]
+            elif elevate and platform.system() != "Windows":
                 import shutil
-                if shutil.which("pkexec"):
+                if sudo_password is not None:
+                    # -S reads the password from stdin; -p "" hides sudo's own prompt text.
+                    cmd = ["sudo", "-S", "-p", ""] + cmd
+                elif shutil.which("pkexec"):
                     cmd = ["pkexec"] + cmd
-                else:
+                elif os.geteuid() != 0:
                     cmd = ["sudo"] + cmd
 
             try:
@@ -246,6 +283,7 @@ class AccliGuiApp(tk.Tk):
 
                 process = subprocess.Popen(
                     cmd,
+                    stdin=subprocess.PIPE if sudo_password is not None else None,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
@@ -255,7 +293,11 @@ class AccliGuiApp(tk.Tk):
                     startupinfo=startupinfo,
                     env=env,
                 )
-                
+                if sudo_password is not None:
+                    # Send the password once and close stdin, so a wrong password fails instead of waiting.
+                    process.stdin.write(sudo_password + "\n")
+                    process.stdin.close()
+
                 output_lines = []
                 while True:
                     line = process.stdout.readline()

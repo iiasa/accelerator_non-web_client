@@ -193,7 +193,8 @@ def test_job_restart_shows_api_error(monkeypatch):
     result = CliRunner().invoke(cli.app, ["job", "restart", "demo", "15"])
 
     assert result.exit_code == 1
-    assert "still in processing state cannot be restarted" in result.output
+    # The terminal output may wrap long lines, so compare with whitespace collapsed.
+    assert "still in processing state cannot be restarted" in " ".join(result.output.split())
 
 
 def test_commands_validate_the_project_first(monkeypatch):

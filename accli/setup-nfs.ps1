@@ -9,14 +9,40 @@
     Bypasses enabling NFS Optional features if already enabled.
 .PARAMETER RegAlreadyEnabled
     Bypasses EnableLinkedConnections registry policy creation if already enabled.
+.PARAMETER CertPath
+    Path to the IIASA internal object storage certificate (iiasa-internal-s3.crt).
+    Defaults to the file next to this script.
 .NOTES
     This script is static and fully auditable by Security and Network Administrators.
 #>
 
 param (
     [switch]$NfsAlreadyEnabled,
-    [switch]$RegAlreadyEnabled
+    [switch]$RegAlreadyEnabled,
+    [string]$CertPath
 )
+
+# 0. Trust the IIASA internal object storage certificate (hctr01obj81.iiasa.ac.at)
+# Direct data transfer on the IIASA network uses this self-signed certificate. It goes into
+# the machine-wide Root store because the mount runs as SYSTEM, which cannot see a user's own certificates.
+$expectedThumbprint = "11E46565A6A204870D0DDFD258863CAF8459F87D"
+if (-not $CertPath) {
+    $CertPath = Join-Path $PSScriptRoot "iiasa-internal-s3.crt"
+}
+Write-Host "Installing IIASA storage certificate..." -ForegroundColor Cyan
+try {
+    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $CertPath
+    if ($cert.Thumbprint -ne $expectedThumbprint) {
+        throw "Certificate at $CertPath does not match the expected thumbprint $expectedThumbprint."
+    }
+    if (-not (Test-Path "Cert:\LocalMachine\Root\$expectedThumbprint")) {
+        Import-Certificate -FilePath $CertPath -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop | Out-Null
+    }
+    Write-Host "[OK] IIASA storage certificate installed." -ForegroundColor Green
+} catch {
+    Write-Error "Could not install the IIASA storage certificate: $_"
+    exit 1
+}
 
 # 1. Enable Windows Client for NFS Optional Features
 if (-not $NfsAlreadyEnabled) {

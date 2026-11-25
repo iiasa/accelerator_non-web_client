@@ -52,6 +52,16 @@ irm https://raw.githubusercontent.com/iiasa/accli/master/scripts/install.ps1 | i
 pip install accli --user
 ```
 
+#### IIASA storage certificate
+
+On the IIASA network, data goes directly to the internal storage server `hctr01obj81.iiasa.ac.at`, which uses a self-signed certificate. accli ships this certificate and makes sure it is trusted:
+
+- **Windows:** installed into the machine-wide trusted certificates. The first time you mount or copy files, Windows asks for administrator approval once.
+- **macOS:** added to the System keychain. The first time you mount or copy files, macOS asks for your password once.
+- **Linux:** accli writes `~/.accli/ca-bundle.pem` (the system's trusted certificates plus this one) and uses it automatically. No administrator rights are needed.
+
+If the certificate is not installed, `accli mount start` and `accli copy` stop with an error instead of transferring data. IT administrators can install it ahead of time with `setup-nfs.ps1` on Windows (see [SECURITY.md](SECURITY.md)).
+
 ### ▶️ Usage
 
 #### As a Python Module

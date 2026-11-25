@@ -27,6 +27,7 @@ An IT Administrator performs a **one-time configuration** on client computers us
 * Runs the static, inspectable script [`scripts/setup-nfs.ps1`](file:///c:/Users/wrufe/accelerator_non-web_client/scripts/setup-nfs.ps1) with administrative rights.
 * Creates `C:\ProgramData\accli` directory and grants **Modify** permissions specifically to the standard workstation's **Authenticated Users** group.
 * Registers a Windows Scheduled Task named **`accli-mount-nfs`** configured to run as **`SYSTEM`** (highest privileges) and execute a static helper script: `C:\ProgramData\accli\run-mount-helper.ps1`.
+* Imports the IIASA internal object storage certificate (`hctr01obj81.iiasa.ac.at`, thumbprint `11E46565A6A204870D0DDFD258863CAF8459F87D`) into the machine-wide **Trusted Root Certification Authorities** store (`Cert:\LocalMachine\Root`). The certificate is self-signed and used for direct data transfer on the IIASA network. It must be machine-wide because the mount runs as `SYSTEM`. The script checks the thumbprint before importing and stops if it does not match. Place `iiasa-internal-s3.crt` next to the script, or pass `-CertPath`.
 
 ### 2. Passwordless Dynamic Mounting (Standard User)
 When a standard user starts a mount:
