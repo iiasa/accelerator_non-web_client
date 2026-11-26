@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import re
 from urllib.parse import urlencode
 
 import urllib3
@@ -8,6 +9,16 @@ import urllib3
 from accli.common import todict
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
+VALID_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def validate_rename_segment(new_name: str) -> str:
+    """Validate that new_name is a single path segment matching the backend pattern."""
+    if not new_name or new_name in {".", ".."} or not VALID_SEGMENT_RE.match(new_name):
+        raise ValueError(
+            "Invalid name: must be a single segment matching ^[a-zA-Z0-9_.-]+$ (not '.' or '..')."
+        )
+    return new_name
 
 
 class AccAPIError(Exception):
@@ -230,3 +241,28 @@ class AcceleratorTerminalCliProjectService:
         if res.data:
             return todict(res.data)
         return None
+
+    def list_node_items(self, project_slug, absolute_node_path):
+        b64_path = base64.b64encode(absolute_node_path.encode()).decode()
+        res = self.http_client_request(
+            "GET",
+            f"{self.cli_base_url}/{project_slug}/node-items/{b64_path}/",
+            headers=self.common_request_headers,
+        )
+        return todict(res.data)
+
+    def _rename_item(self, project_slug: str, endpoint: str, id_key: str, item_id: int, new_name: str) -> bool:
+        validate_rename_segment(new_name)
+        res = self.http_client_request(
+            "PUT",
+            f"{self.server_url}/api/v1/projects/{project_slug}/{endpoint}/",
+            json={id_key: item_id, "new_name": new_name},
+            headers=self.common_request_headers,
+        )
+        return todict(res.data) if res.data else True
+
+    def rename_file(self, project_slug: str, object_id: int, new_name: str) -> bool:
+        return self._rename_item(project_slug, "rename-file", "object_id", object_id, new_name)
+
+    def rename_folder(self, project_slug: str, node_id: int, new_name: str) -> bool:
+        return self._rename_item(project_slug, "rename-folder", "node_id", node_id, new_name)
