@@ -230,3 +230,16 @@ class AcceleratorTerminalCliProjectService:
         if res.data:
             return todict(res.data)
         return None
+
+    def release_files(self, project_slug, objects_ids_list, nodes_ids_list=None):
+        # The backend streams plain-text progress lines ("Releasing ...", "Released ...", "Error: ...").
+        res = self.http_client_request(
+            "PUT",
+            f"{self.server_url.rstrip('/')}/api/v1/projects/{project_slug}/release-files/",
+            json={
+                'objects_ids_list': list(objects_ids_list),
+                'nodes_ids_list': list(nodes_ids_list) if nodes_ids_list is not None else [],
+            },
+            headers={**self.common_request_headers, 'Content-Type': 'application/json'}
+        )
+        return res.data.decode('utf-8', errors='replace')
