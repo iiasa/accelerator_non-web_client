@@ -30,6 +30,7 @@ from ._version import VERSION
 from . import mount_downloader
 from . import xet_cache
 from . import internal_certs
+from .file_filter import iter_selected_files
 from .version_checker import check_for_updates, get_upgrade_instruction
 
 warnings.filterwarnings('ignore')
@@ -556,11 +557,23 @@ def copy(
         source: Annotated[str, typer.Argument(help="Source path (local path or remote acc://...)")],
         destination: Annotated[str, typer.Argument(help="Destination path (local path or remote acc://...)")],
         token_pass: Annotated[str, typer.Option(..., "-t", help="Optional authorization token pass.")] = "",
+        include: Annotated[str, typer.Option(
+            "--include",
+            help="Uploads only: comma-separated wildcard patterns of files to upload, e.g. 'Dockerfile, *.py'. "
+                 "Wins over --exclude. Same rules as include in wkube.py.",
+        )] = None,
+        exclude: Annotated[str, typer.Option(
+            "--exclude",
+            help="Uploads only: comma-separated wildcard patterns of files and folders to leave out, "
+                 "e.g. '.git, .venv, __pycache__, *.pyc'. Same rules as exclude in wkube.py.",
+        )] = None,
 ):
     """
     Copy files between local filesystems and Accelerator project spaces using hf-xet.
 
     At least one of the paths must be a remote path starting with 'acc://'.
+
+    When uploading a folder, --include and --exclude choose which files to upload. Patterns are matched against file and folder names and paths inside the folder, so '.git' leaves out the whole .git folder; a file matching --include is uploaded even if it matches --exclude; with only --include, nothing else is uploaded.
 
     Downloads (acc:// -> local path) on the IIASA network need the IIASA storage certificate; uploads never do.
     """
@@ -572,6 +585,9 @@ def copy(
         raise typer.Exit(1)
     if is_src_remote and is_dest_remote:
         print("[bold red]ERROR: Remote-to-remote copy is not supported. One path must be local.[/bold red]")
+        raise typer.Exit(1)
+    if is_src_remote and (include or exclude):
+        print("[bold red]ERROR: --include and --exclude only work when uploading (local path -> acc://).[/bold red]")
         raise typer.Exit(1)
 
     # Downloads may go directly to IIASA's internal storage; uploads always go through the server.
@@ -798,21 +814,19 @@ def copy(
         remote_filenames = []
 
         if local_src_path.is_dir():
-            # Recursively find all files
-            for local_file in local_src_path.rglob("*"):
-                if local_file.is_file():
-                    rel_subpath = local_file.relative_to(local_src_path)
-                    # Remote filename should be relative under project_slug
-                    if remote_path:
-                        remote_name = f"{remote_path.rstrip('/')}/{rel_subpath}"
-                    else:
-                        remote_name = str(rel_subpath)
-                    
-                    if os.name == 'nt':
-                        remote_name = remote_name.replace('\\', '/')
-                        
-                    local_paths.append(local_file)
-                    remote_filenames.append(remote_name)
+            # Recursively find the files that --include/--exclude keep (all files without them)
+            for local_file, rel_subpath in iter_selected_files(local_src_path, include, exclude):
+                # Remote filename should be relative under project_slug ('/'-separated on every OS)
+                if remote_path:
+                    remote_name = f"{remote_path.rstrip('/')}/{rel_subpath}"
+                else:
+                    remote_name = rel_subpath
+
+                local_paths.append(Path(local_file))
+                remote_filenames.append(remote_name)
+        elif include or exclude:
+            print("[bold red]ERROR: --include and --exclude only work when uploading a folder.[/bold red]")
+            raise typer.Exit(1)
         else:
             # Single file
             if remote_path.endswith("/") or not remote_path:

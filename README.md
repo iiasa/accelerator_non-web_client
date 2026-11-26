@@ -154,6 +154,24 @@ accli job restart my-project 1234
 accli job restart my-project 1234 --rebuild
 ```
 
+### 📁 Copying files
+
+```bash
+accli copy ./results acc://my-project/results          # upload a folder
+accli copy acc://my-project/results ./results          # download
+accli copy ./myjob acc://my-project/jobstore/20261126/<id> --exclude ".git, .venv, __pycache__, *.pyc"
+```
+
+When uploading a folder, `--include` and `--exclude` choose which files to upload. They work the same as `include` and `exclude` in `wkube.py`: comma-separated wildcard patterns, matched against file and folder names and their paths inside the folder. A matching folder covers everything in it (`.git` leaves out the whole `.git` folder), `--include` wins over `--exclude`, and with only `--include` nothing else is uploaded.
+
+#### Large job folders
+
+`accli dispatch` uploads the job folder from `wkube.py` to build the job's container image, and stops if that upload is over 1 GB. The error message then explains the steps, with a ready-to-use path:
+
+1. Upload the job folder to the project space with `accli copy … acc://<project>/jobstore/<YYYYMMDD>/<id>`, using `--exclude`/`--include` to leave out what the job does not need while it runs.
+2. In `wkube.py`, set `include`/`exclude` so the job folder upload contains only the files the image build needs.
+3. In `wkube.py`, run the job from the uploaded copy: `command="cd /mnt/wdrv/jobstore/<YYYYMMDD>/<id> && …"`.
+
 ---
 
 ## 👩‍💻 Developer Guide

@@ -3,9 +3,10 @@ import zipfile
 import hashlib
 import shutil
 import tempfile
-import fnmatch
 import concurrent.futures
 import json
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -13,6 +14,7 @@ import requests
 from functools import lru_cache
 from pydantic import BaseModel, model_validator, Field
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
+from accli.file_filter import iter_selected_files
 from accli.token import (
     get_token, get_server_url,
     get_project_slug, exchange_refresh_token
@@ -52,42 +54,16 @@ def get_file_sha1(file_path):
     return sha1_hash.hexdigest()
 
 
-def copy_tree(src, dst, include=None, exclude=None, root_src=None):
-    """Recursively copy from src to dst, excluding .git folders. Includes override excludes."""
-    if root_src is None:
-        root_src = src
-        
-    excludes = [e.strip() for e in exclude.split(',') if e.strip()] if exclude else []
-    includes = [i.strip() for i in include.split(',') if i.strip()] if include else []
-        
-    for item in os.listdir(src):
-        src_path = os.path.join(src, item)
-        dst_path = os.path.join(dst, item)
-        rel_path = os.path.relpath(src_path, root_src)
+def copy_tree(src, dst, include=None, exclude=None):
+    """Copy the files of src that include/exclude keep into dst, never .git folders.
 
-        if os.path.isdir(src_path):
-            if item == '.git':
-                continue
-            
-            is_excluded = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes)
-            # Traverse even if excluded as long as includes exist, to find exceptions
-            if is_excluded and not includes:
-                continue
-                
-            os.makedirs(dst_path, exist_ok=True)
-            copy_tree(src_path, dst_path, include, exclude, root_src)
-        else:
-            is_excluded = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in excludes)
-            is_included = any(fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(item, p) for p in includes)
-            
-            if is_included:
-                pass # Included files override exclude
-            elif is_excluded:
-                continue # Skipped by exclude
-            elif includes and not excludes:
-                continue # If ONLY includes list is provided, act as whitelist
-                
-            shutil.copy2(src_path, dst_path)
+    include/exclude work as described in accli/file_filter.py (the same rules as
+    `accli copy --include/--exclude`).
+    """
+    for src_path, rel_path in iter_selected_files(src, include, exclude, skip_dirs=(".git",)):
+        dst_path = os.path.join(dst, *rel_path.split("/"))
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        shutil.copy2(src_path, dst_path)
 
 
 def _upload_cas_file_worker(args):
@@ -120,39 +96,16 @@ def _upload_cas_file_worker(args):
 
 MAX_JOB_FOLDER_BYTES = 1024 * 1024 * 1024  # 1 GB
 
-# Shown when the job folder is too big. These files set up the job's environment and
-# must stay in the job folder. The list is illustrative, not exhaustive.
-DEPENDENCY_FILE_EXAMPLES = (
-    "  Containers: Dockerfile, *.dockerfile, Containerfile, .dockerignore, docker-compose.yml, "
-    "Singularity / *.def, apptainer.def\n"
-    "  Python:     requirements*.txt, constraints.txt, pyproject.toml, setup.py, setup.cfg, Pipfile, "
-    "Pipfile.lock, poetry.lock, uv.lock, pdm.lock, environment.yml, conda-lock.yml, .python-version, runtime.txt\n"
-    "  R:          init.R, install.R, install_packages.R, DESCRIPTION, NAMESPACE, renv.lock, renv/activate.R, "
-    ".Rprofile, packrat/packrat.lock\n"
-    "  Julia:      Project.toml, Manifest.toml\n"
-    "  Node/JS:    package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, .npmrc, .nvmrc\n"
-    "  Go:         go.mod, go.sum\n"
-    "  Rust:       Cargo.toml, Cargo.lock, rust-toolchain.toml\n"
-    "  Java/JVM:   pom.xml, build.gradle, build.gradle.kts, settings.gradle, gradle.properties, "
-    "gradle/wrapper/*, build.sbt\n"
-    "  C/C++:      CMakeLists.txt, *.cmake, Makefile, configure, meson.build, conanfile.txt, conanfile.py, vcpkg.json\n"
-    "  Fortran:    fpm.toml, Makefile\n"
-    "  Ruby/PHP:   Gemfile, Gemfile.lock, composer.json, composer.lock\n"
-    "  .NET:       *.csproj, *.sln, packages.config, global.json\n"
-    "  MATLAB:     *.prj, startup.m, buildfile.m\n"
-    "  GAMS/Optim: solver option files (*.opt), licence/config files the model reads at startup\n"
-    "  System:     apt.txt, packages.txt, install.sh, setup.sh, entrypoint.sh, startscript.sh, Makefile, "
-    "Taskfile.yml, justfile, .env.example, *.conf / config files read during setup\n"
-    "  Also any local package your dependency file points to, e.g. '-e ./mypkg' in requirements.txt "
-    "or a vendored wheel/tarball.\n"
-)
-
-
 def _format_bytes(num_bytes):
     for unit in ("B", "KB", "MB", "GB"):
         if num_bytes < 1024 or unit == "GB":
             return f"{num_bytes:.1f} {unit}" if unit != "B" else f"{num_bytes} B"
         num_bytes /= 1024
+
+
+def job_code_path():
+    """A new project-space path for job code: jobstore/<date as YYYYMMDD>/<uuid>."""
+    return f"jobstore/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4()}"
 
 
 def check_job_folder_size(repo_dir, directory, project_slug):
@@ -165,26 +118,37 @@ def check_job_folder_size(repo_dir, directory, project_slug):
     if total <= MAX_JOB_FOLDER_BYTES:
         return
 
+    # A ready-to-use path, so the commands below can be copied as they are.
+    code_path = job_code_path()
+
     raise ValueError(
-        f"The job folder '{directory}' is {_format_bytes(total)} after applying include/exclude, "
-        f"which is more than the {_format_bytes(MAX_JOB_FOLDER_BYTES)} limit for job folder uploads.\n\n"
-        f"Upload the full job folder to the project space and run the job from there:\n"
-        f"  1. Upload the whole folder:  accli copy {directory} acc://{project_slug}/<path>\n"
-        f"     accli copy has no include/exclude and uploads everything in the folder, so first remove "
-        f"or move out anything the job does not need, such as .git/, .venv/, venv/, node_modules/, "
-        f"__pycache__/ and local outputs.\n"
-        f"  2. Keep only the dependency and build files in the job folder upload:\n"
-        f"       exclude='*', include='Dockerfile, requirements.txt, init.R, ...'\n"
-        f"  3. Run the code from the project space, e.g.\n"
-        f"       command=\"cd /mnt/wdrv/<path> && <your current command>\"\n"
-        f"  <path> is any location in the project space you choose; acc://{project_slug}/<path> is "
-        f"available in the job at /mnt/wdrv/<path>.\n"
-        f"Why the dependency files stay in the job folder: the container image is built from the job "
-        f"folder before the job starts, so /mnt/wdrv is not available at build time. Include patterns "
-        f"override exclude patterns, which is why exclude='*' plus include works.\n"
-        f"Dependency and build files to keep (examples, not a complete list; keep any file your "
-        f"language, package manager or build tool reads to set up the environment):\n"
-        f"{DEPENDENCY_FILE_EXAMPLES}"
+        f"Job folder too large: '{directory}' is {_format_bytes(total)} after the include/exclude "
+        f"in wkube.py; the limit is {_format_bytes(MAX_JOB_FOLDER_BYTES)}.\n"
+        f"\n"
+        f"'accli dispatch' uploads the job folder from wkube.py (job_folder, include, exclude) to build "
+        f"the job's container image. Keep that upload to the files the build needs, upload the job's "
+        f"code and data to the project space with 'accli copy', and run the job from there.\n"
+        f"\n"
+        f"Steps:\n"
+        f"  1. Upload the job folder to the project space:\n"
+        f"       accli copy \"{directory}\" acc://{project_slug}/{code_path} --exclude \"<patterns>\"\n"
+        f"     Use --exclude (and --include) to leave out what the job does not need while it runs, such "
+        f"as version-control folders (.git, .svn), environments and installed packages, caches, old "
+        f"outputs, and temporary or test data. Look at the job's command in wkube.py and the code it "
+        f"runs to work out what it needs.\n"
+        f"  2. In wkube.py, set include/exclude so the job folder upload contains only the files the "
+        f"image build needs, for example:\n"
+        f"       exclude=\"*\",\n"
+        f"       include=\"<build files>\",\n"
+        f"  3. In wkube.py, run the job from the uploaded copy:\n"
+        f"       command=\"cd /mnt/wdrv/{code_path} && <your current command>\"\n"
+        f"     acc://{project_slug}/{code_path} is available in the job at /mnt/wdrv/{code_path}.\n"
+        f"  4. Run 'accli dispatch' again.\n"
+        f"\n"
+        f"include/exclude work the same in wkube.py and accli copy: comma-separated wildcard patterns, "
+        f"matched against file and folder names and their paths inside the folder. A matching folder "
+        f"covers everything in it. include wins over exclude. With only include, nothing else is "
+        f"uploaded."
     )
 
 
