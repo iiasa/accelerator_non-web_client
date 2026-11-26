@@ -21,6 +21,7 @@ from accli.log_timeline import build_timeline
 from accli import job_views
 from accli.token import save_token_details, get_token, get_server_url, set_project_slug, get_project_slug, get_db_path, exchange_refresh_token
 from rich import print
+from rich.markup import escape
 from rich.text import Text
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 from typing_extensions import Annotated
@@ -435,6 +436,7 @@ def copy(
         source: Annotated[str, typer.Argument(help="Source path (local path or remote acc://...)")],
         destination: Annotated[str, typer.Argument(help="Destination path (local path or remote acc://...)")],
         token_pass: Annotated[str, typer.Option(..., "-t", help="Optional authorization token pass.")] = "",
+        release: Annotated[bool, typer.Option("--release", help="Release uploaded files after copying (requires project admin).")] = False,
 ):
     """
     Copy files between local filesystems and Accelerator project spaces using hf-xet.
@@ -448,6 +450,9 @@ def copy(
         raise typer.Exit(1)
     if is_src_remote and is_dest_remote:
         print("[bold red]ERROR: Remote-to-remote copy is not supported. One path must be local.[/bold red]")
+        raise typer.Exit(1)
+    if release and is_src_remote:
+        print("[bold red]ERROR: --release is only supported when uploading to acc://[/bold red]")
         raise typer.Exit(1)
 
     # Resolve project_slug from the remote path
@@ -730,6 +735,7 @@ def copy(
         
         refresh_url = f"{server_url.rstrip('/')}/api/v1/oauth/device/cas-token/"
         refresh_headers = {"Authorization": f"Bearer {cas_token}"}
+        registered_object_ids: List[int] = []
         
         import sys
         columns = [
@@ -816,6 +822,15 @@ def copy(
                     )
                     response.raise_for_status()
                     
+                    if release:
+                        registered = response.json()
+                        if isinstance(registered, list):
+                            registered_object_ids.extend(
+                                item["id"] for item in registered
+                                if isinstance(item, dict) and isinstance(item.get("id"), int)
+                                and not isinstance(item.get("id"), bool)
+                            )
+
                     batch_size = sum(p.stat().st_size for p in b_paths)
                     completed_in_previous_batches += batch_size
                     progress.update(overall_task, completed=completed_in_previous_batches)
@@ -838,6 +853,33 @@ def copy(
             upload_marker.__exit__(None, None, None)
 
         print("[bold green][OK] Upload completed successfully![/bold green]")
+
+        if release:
+            if not registered_object_ids:
+                print("[bold red]ERROR: Server did not return any file IDs to release.[/bold red]")
+                raise typer.Exit(1)
+
+            print(f"[cyan]Releasing {len(registered_object_ids)} file(s)...[/cyan]")
+            try:
+                release_output = term_cli_project_service.release_files(project_slug, registered_object_ids)
+            except AccAPIError as err:
+                print(f"[bold red]ERROR: Failed to release files: {_api_error_detail(err)}[/bold red]")
+                raise typer.Exit(1)
+
+            release_failed = False
+            for line in release_output.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("Error:"):
+                    release_failed = True
+                    print(f"[bold red]{escape(line)}[/bold red]")
+                else:
+                    print(escape(line))
+            if release_failed:
+                raise typer.Exit(1)
+
+            print(f"[bold green][OK] Released {len(registered_object_ids)} file(s) successfully![/bold green]")
 
 
 # --- Cache commands group ---
