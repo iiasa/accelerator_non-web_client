@@ -15,7 +15,11 @@ import requests
 import typer
 from typing import List
 
-from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService, AccAPIError
+from accli.AcceleratorTerminalCliProjectService import (
+    AcceleratorTerminalCliProjectService,
+    AccAPIError,
+    validate_rename_segment,
+)
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from accli.log_timeline import build_timeline
 from accli import job_views
@@ -2241,4 +2245,82 @@ def mount_status(
         print("[bold cyan]Active Mounts:[/bold cyan]")
         for m in active_mounts:
             print(m)
+
+
+def _parse_remote_item_path(target: str) -> tuple[str, str]:
+    if not target.startswith("acc://"):
+        raise ValueError("Target must be a remote path starting with 'acc://'.")
+    rest = target[len("acc://"):].rstrip("/")
+    if "/" not in rest:
+        raise ValueError("Cannot rename the project root folder; provide 'acc://<project_slug>/<path>'.")
+    project_slug, rel_path = rest.split("/", 1)
+    if not project_slug or not rel_path:
+        raise ValueError("Target must be of the form 'acc://<project_slug>/<path>'.")
+    return project_slug, rel_path
+
+
+@app.command()
+def rename(
+        target: Annotated[str, typer.Argument(help="Remote file or folder path (acc://<project_slug>/<path>).")],
+        new_name: Annotated[str, typer.Argument(help="New single-segment name (no slashes).")],
+        file: Annotated[bool, typer.Option("--file", help="Require target to be a file.")] = False,
+        folder: Annotated[bool, typer.Option("--folder", help="Require target to be a folder.")] = False,
+):
+    """Rename a remote file or folder in place."""
+    if file and folder:
+        print("[red]Pass at most one of --file or --folder.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        project_slug, rel_path = _parse_remote_item_path(target)
+        validate_rename_segment(new_name)
+    except ValueError as err:
+        print(f"[red]{err}[/red]")
+        raise typer.Exit(1)
+
+    parent_rel = rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+    parent_path = f"{project_slug}/{parent_rel}" if parent_rel else project_slug
+    full_path = f"{project_slug}/{rel_path}"
+
+    service = _cli_service_for(project_slug)
+
+    try:
+        items = service.list_node_items(project_slug, parent_path) or {}
+    except AccAPIError as err:
+        print(f"[red]{_api_error_detail(err)}[/red]")
+        raise typer.Exit(1)
+
+    matched_obj = next((o for o in items.get("objects", []) if o.get("filename") == full_path), None)
+    matched_node = next((n for n in items.get("nodes", []) if n.get("absolute_node_name") == full_path), None)
+
+    if file:
+        kind, item = "file", matched_obj
+    elif folder:
+        kind, item = "folder", matched_node
+    elif matched_obj and matched_node:
+        print(f"[red]Both a file and a folder exist at '{rel_path}'. Specify --file or --folder.[/red]")
+        raise typer.Exit(1)
+    elif matched_obj:
+        kind, item = "file", matched_obj
+    elif matched_node:
+        kind, item = "folder", matched_node
+    else:
+        print(f"[red]Path '{rel_path}' not found in project '{project_slug}'.[/red]")
+        raise typer.Exit(1)
+
+    if item is None:
+        print(f"[red]{kind.capitalize()} '{rel_path}' not found in project '{project_slug}'.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        if kind == "file":
+            service.rename_file(project_slug, item["id"], new_name)
+        else:
+            service.rename_folder(project_slug, item["id"], new_name)
+    except AccAPIError as err:
+        print(f"[red]{_api_error_detail(err)}[/red]")
+        raise typer.Exit(1)
+
+    new_rel_path = f"{parent_rel}/{new_name}" if parent_rel else new_name
+    print(f"[green]Renamed {kind} '{rel_path}' -> '{new_rel_path}'[/green]")
 
