@@ -50,6 +50,7 @@ ALL_COMMAND_INVOCATIONS = [
     ["jobs", "demo"],
     ["job", "demo", "1"],
     ["copy", "local_a", "local_b"],
+    ["rename", "acc://demo", "new_name"],
     ["mount", "start", "demo", "--mode", "invalid"],
     ["mount", "stop", "invalid_drive"],
     ["mount", "status"],
