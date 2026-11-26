@@ -30,7 +30,7 @@ from ._version import VERSION
 from . import mount_downloader
 from . import xet_cache
 from . import internal_certs
-from .file_filter import iter_selected_files
+from .file_filter import UploadNotConfirmed, confirm_version_control, iter_selected_files
 from .version_checker import check_for_updates, get_upgrade_instruction
 
 warnings.filterwarnings('ignore')
@@ -295,9 +295,15 @@ def validate(
 def dispatch(
         project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug.")],
         root_task_variable: Annotated[str, typer.Argument(help="Root task variable in workflow_file.")],
-        workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py"
+        workflow_filename: Annotated[str, typer.Option(..., '-f', help="Python workflow filepath.")] = "wkube.py",
+        yes: Annotated[bool, typer.Option(
+            "--yes", "-y",
+            help="Upload version-control folders (.git, .svn, ...) in the job folder without asking.",
+        )] = False,
 ):
     """Dispatch and submit computational workflow tasks to Accelerator."""
+    from . import AcceleratorTaskDispatcher
+    AcceleratorTaskDispatcher.UPLOAD_VERSION_CONTROL = yes
     set_project_slug(project_slug)
     server_url = get_server_url()
     # Exchange the refresh token for a short-lived access token
@@ -567,6 +573,10 @@ def copy(
             help="Uploads only: comma-separated wildcard patterns of files and folders to leave out, "
                  "e.g. '.git, .venv, __pycache__, *.pyc'. Same rules as exclude in wkube.py.",
         )] = None,
+        yes: Annotated[bool, typer.Option(
+            "--yes", "-y",
+            help="Upload version-control folders (.git, .svn, ...) in the folder without asking.",
+        )] = False,
 ):
     """
     Copy files between local filesystems and Accelerator project spaces using hf-xet.
@@ -812,6 +822,7 @@ def copy(
         # Collect local files and map to remote filenames
         local_paths = []
         remote_filenames = []
+        folder_files = []  # (path inside the folder, bytes), for the version-control check
 
         if local_src_path.is_dir():
             # Recursively find the files that --include/--exclude keep (all files without them)
@@ -824,6 +835,17 @@ def copy(
 
                 local_paths.append(Path(local_file))
                 remote_filenames.append(remote_name)
+                folder_files.append((rel_subpath, Path(local_file).stat().st_size))
+
+            # Version-control folders are only uploaded on purpose (asks, or stops without a terminal).
+            from .AcceleratorTaskDispatcher import _format_bytes
+            try:
+                confirm_version_control(
+                    folder_files, yes, 'add them to --exclude, for example --exclude ".git"', _format_bytes,
+                )
+            except UploadNotConfirmed as e:
+                typer.echo(str(e), err=True)
+                raise typer.Exit(1)
         elif include or exclude:
             print("[bold red]ERROR: --include and --exclude only work when uploading a folder.[/bold red]")
             raise typer.Exit(1)
@@ -980,6 +1002,46 @@ def copy(
             upload_marker.__exit__(None, None, None)
 
         print("[bold green][OK] Upload completed successfully![/bold green]")
+
+
+@app.command("size")
+def size_command(
+        folder: Annotated[Path, typer.Argument(help="Local folder to measure.")],
+        include: Annotated[str, typer.Option(
+            "--include", help="Comma-separated wildcard patterns of files to count. Same rules as accli copy and wkube.py.",
+        )] = None,
+        exclude: Annotated[str, typer.Option(
+            "--exclude", help="Comma-separated wildcard patterns of files and folders to leave out. Same rules as accli copy and wkube.py.",
+        )] = None,
+        top: Annotated[int, typer.Option("--top", help="How many of the largest files and folders to list.")] = 20,
+):
+    """
+    Show the largest files and folders in a local folder, largest first.
+
+    Use it to decide what to leave out of an upload: run it with the --include/--exclude you plan to use with accli copy, or the include/exclude in wkube.py, to see what the upload would contain.
+    """
+    from .AcceleratorTaskDispatcher import _format_bytes
+    from .file_filter import folder_stats
+
+    if not folder.is_dir():
+        print(f"[bold red]ERROR: Not a folder: {folder}[/bold red]")
+        raise typer.Exit(1)
+
+    total, files, folders = folder_stats(folder, include, exclude)
+
+    # Plain output (no colour markup), so file names are shown exactly and tools can read it.
+    filtered = " after --include/--exclude" if (include or exclude) else ""
+    lines = [f"Folder: {folder.resolve()}", f"Total: {_format_bytes(total)} in {len(files)} files{filtered}", ""]
+    for title, items in (("Largest files:", files), ("Largest folders (including everything inside):", folders)):
+        lines.append(title)
+        if not items:
+            lines.append("  (none)")
+        for name, item_size in items[:top]:
+            lines.append(f"  {_format_bytes(item_size):>10}  {name}")
+        if len(items) > top:
+            lines.append(f"  ... {len(items) - top} more; use --top to list more")
+        lines.append("")
+    typer.echo("\n".join(lines).rstrip())
 
 
 # --- Cache commands group ---

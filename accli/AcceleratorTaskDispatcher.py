@@ -14,7 +14,7 @@ import requests
 from functools import lru_cache
 from pydantic import BaseModel, model_validator, Field
 from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliProjectService
-from accli.file_filter import iter_selected_files
+from accli.file_filter import confirm_version_control, iter_selected_files
 from accli.token import (
     get_token, get_server_url,
     get_project_slug, exchange_refresh_token
@@ -55,12 +55,12 @@ def get_file_sha1(file_path):
 
 
 def copy_tree(src, dst, include=None, exclude=None):
-    """Copy the files of src that include/exclude keep into dst, never .git folders.
+    """Copy the files of src that include/exclude keep into dst.
 
     include/exclude work as described in accli/file_filter.py (the same rules as
     `accli copy --include/--exclude`).
     """
-    for src_path, rel_path in iter_selected_files(src, include, exclude, skip_dirs=(".git",)):
+    for src_path, rel_path in iter_selected_files(src, include, exclude):
         dst_path = os.path.join(dst, *rel_path.split("/"))
         os.makedirs(os.path.dirname(dst_path), exist_ok=True)
         shutil.copy2(src_path, dst_path)
@@ -95,6 +95,9 @@ def _upload_cas_file_worker(args):
 
 
 MAX_JOB_FOLDER_BYTES = 1024 * 1024 * 1024  # 1 GB
+
+# Set by `accli dispatch -y`: upload version-control folders in the job folder without asking.
+UPLOAD_VERSION_CONTROL = False
 
 def _format_bytes(num_bytes):
     for unit in ("B", "KB", "MB", "GB"):
@@ -136,10 +139,15 @@ def check_job_folder_size(repo_dir, directory, project_slug):
         f"as version-control folders (.git, .svn), environments and installed packages, caches, old "
         f"outputs, and temporary or test data. Look at the job's command in wkube.py and the code it "
         f"runs to work out what it needs.\n"
+        f"     To see the largest files and folders, run:\n"
+        f"       accli size \"{directory}\"\n"
+        f"     Run it again with the --exclude/--include you plan to use to check what the upload will contain.\n"
         f"  2. In wkube.py, set include/exclude so the job folder upload contains only the files the "
         f"image build needs, for example:\n"
         f"       exclude=\"*\",\n"
         f"       include=\"<build files>\",\n"
+        f"     To check it, run accli size with the same patterns: "
+        f"accli size \"{directory}\" --exclude \"*\" --include \"<build files>\"\n"
         f"  3. In wkube.py, run the job from the uploaded copy:\n"
         f"       command=\"cd /mnt/wdrv/{code_path} && <your current command>\"\n"
         f"     acc://{project_slug}/{code_path} is available in the job at /mnt/wdrv/{code_path}.\n"
@@ -171,6 +179,11 @@ def push_folder_job(directory, include=None, exclude=None):
         os.remove(f'{repo_dir}/wkube.py')
 
     try:
+        uploaded = [(rel, os.path.getsize(path)) for path, rel in iter_selected_files(repo_dir)]
+        confirm_version_control(
+            uploaded, UPLOAD_VERSION_CONTROL,
+            'add them to exclude in wkube.py, for example exclude=".git"', _format_bytes,
+        )
         check_job_folder_size(repo_dir, directory, project_slug)
     except ValueError:
         shutil.rmtree(repo_dir, ignore_errors=True)

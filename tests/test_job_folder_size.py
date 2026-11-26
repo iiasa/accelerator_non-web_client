@@ -59,3 +59,10 @@ def test_message_is_generic(message):
 def test_small_folder_passes(tmp_path):
     (tmp_path / "small.txt").write_text("ok")
     dispatcher.check_job_folder_size(str(tmp_path), "./myjob", "myproject")  # no error
+
+
+def test_message_points_to_accli_size(message):
+    step1 = message[message.index("  1. "):message.index("  2. ")]
+    step2 = message[message.index("  2. "):message.index("  3. ")]
+    assert 'accli size "/home/me/my job"\n' in step1
+    assert 'accli size "/home/me/my job" --exclude "*" --include "<build files>"' in step2

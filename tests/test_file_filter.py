@@ -21,8 +21,8 @@ def folder(tmp_path):
     return tmp_path
 
 
-def selected(folder, include=None, exclude=None, skip_dirs=()):
-    return sorted(rel for _, rel in iter_selected_files(folder, include, exclude, skip_dirs))
+def selected(folder, include=None, exclude=None):
+    return sorted(rel for _, rel in iter_selected_files(folder, include, exclude))
 
 
 def test_split_patterns():
@@ -72,8 +72,10 @@ def test_include_a_whole_folder(folder):
     assert selected(folder, include="src", exclude="*") == ["src/__pycache__/model.pyc", "src/model.py"]
 
 
-def test_skip_dirs_are_never_entered(folder):
-    assert not any(f.startswith(".git/") for f in selected(folder, include="*", skip_dirs=(".git",)))
+def test_git_folder_is_kept_unless_excluded(folder):
+    # No folder is left out automatically, in accli copy or the dispatch job folder upload.
+    assert ".git/config" in selected(folder)
+    assert ".git/config" not in selected(folder, exclude=".git")
 
 
 def test_paths_use_forward_slashes(folder):
@@ -94,7 +96,16 @@ def test_dispatch_job_folder_uses_the_same_rules(folder, tmp_path_factory):
     copy_tree(str(folder), str(out), "Dockerfile, requirements.txt", "*")
     copied = sorted(os.path.relpath(os.path.join(r, f), out).replace(os.sep, "/")
                     for r, _, fs in os.walk(out) for f in fs)
-    assert copied == selected(folder, "Dockerfile, requirements.txt", "*", skip_dirs=(".git",))
+    assert copied == selected(folder, "Dockerfile, requirements.txt", "*")
+
+
+def test_dispatch_uploads_git_folder_unless_excluded(folder, tmp_path_factory):
+    from accli.AcceleratorTaskDispatcher import copy_tree
+
+    for exclude, expected in ((None, True), (".git", False)):
+        out = tmp_path_factory.mktemp("job")
+        copy_tree(str(folder), str(out), None, exclude)
+        assert os.path.isfile(os.path.join(out, ".git", "config")) is expected
 
 
 def test_copy_rejects_patterns_for_downloads():
@@ -154,3 +165,71 @@ def test_copy_upload_sends_only_the_selected_files(folder, tmp_path_factory):
     expected = ["Dockerfile", "main.py", "outputs/run1.txt", "requirements.txt", "src/model.py", "sub/requirements.txt"]
     assert sorted(os.path.relpath(p, folder).replace(os.sep, "/") for p in uploaded) == expected
     assert sorted(registered) == [f"proj/jobstore/20261126/abc/{f}" for f in expected]
+
+
+# --- accli size ---------------------------------------------------------------------------
+
+
+def _size_folder(tmp_path):
+    files = {"main.py": 10, "data/raw/a.parquet": 900, "data/raw/b.gpkg": 150, "outputs/run.nc": 350,
+             ".venv/lib/m1.py": 120, ".venv/lib/m2.py": 120, ".venv/lib/m3.py": 120}
+    for name, n in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * n)
+    return tmp_path
+
+
+def test_folder_stats_orders_files_and_folders(tmp_path):
+    from accli.file_filter import folder_stats
+
+    total, files, folders = folder_stats(_size_folder(tmp_path))
+    assert total == 1770
+    assert [name for name, _ in files][:3] == ["data/raw/a.parquet", "outputs/run.nc", "data/raw/b.gpkg"]
+    # A folder of many small files shows up in the folder list even though no file of it is large.
+    assert folders[:4] == [("data/", 1050), ("data/raw/", 1050), (".venv/", 360), (".venv/lib/", 360)]
+
+
+def test_folder_stats_applies_include_exclude(tmp_path):
+    from accli.file_filter import folder_stats
+
+    total, files, folders = folder_stats(_size_folder(tmp_path), exclude=".venv, outputs")
+    assert total == 1060
+    assert not any(name.startswith((".venv", "outputs")) for name, _ in files + folders)
+
+
+def _run_size(args):
+    from unittest import mock
+    from typer.testing import CliRunner
+    from accli import cli
+
+    with mock.patch.object(cli, "check_for_updates", return_value=(False, None)):
+        return CliRunner().invoke(cli.app, ["size", *args])
+
+
+def test_size_command_output(tmp_path):
+    folder = _size_folder(tmp_path)
+    result = _run_size([str(folder), "--top", "2"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines[1] == "Total: 1.7 KB in 7 files"
+    files_at = lines.index("Largest files:")
+    assert lines[files_at + 1].split() == ["900", "B", "data/raw/a.parquet"]
+    assert lines[files_at + 2].split() == ["350", "B", "outputs/run.nc"]
+    assert lines[files_at + 3].strip() == "... 5 more; use --top to list more"
+    folders_at = lines.index("Largest folders (including everything inside):")
+    assert lines[folders_at + 1].split() == ["1.0", "KB", "data/"]
+
+
+def test_size_command_with_patterns(tmp_path):
+    folder = _size_folder(tmp_path)
+    result = _run_size([str(folder), "--exclude", "*", "--include", "main.py"])
+    assert result.exit_code == 0, result.output
+    assert "Total: 10 B in 1 files after --include/--exclude" in result.output
+
+
+def test_size_command_rejects_a_file(tmp_path):
+    (tmp_path / "f.txt").write_text("x")
+    result = _run_size([str(tmp_path / "f.txt")])
+    assert result.exit_code == 1
+    assert "Not a folder" in result.output

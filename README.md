@@ -162,7 +162,16 @@ accli copy acc://my-project/results ./results          # download
 accli copy ./myjob acc://my-project/jobstore/20261126/<id> --exclude ".git, .venv, __pycache__, *.pyc"
 ```
 
-When uploading a folder, `--include` and `--exclude` choose which files to upload. They work the same as `include` and `exclude` in `wkube.py`: comma-separated wildcard patterns, matched against file and folder names and their paths inside the folder. A matching folder covers everything in it (`.git` leaves out the whole `.git` folder), `--include` wins over `--exclude`, and with only `--include` nothing else is uploaded.
+When uploading a folder, `--include` and `--exclude` choose which files to upload. They work the same as `include` and `exclude` in `wkube.py`: comma-separated wildcard patterns, matched against file and folder names and their paths inside the folder. A matching folder covers everything in it (`.git` leaves out the whole `.git` folder), `--include` wins over `--exclude`, and with only `--include` nothing else is uploaded. Nothing is left out automatically, not even `.git`, in `accli copy` or in the job folder upload of `accli dispatch`.
+
+Version-control folders (`.git`, `.svn`, `.hg`, `.bzr`) are not uploaded by accident, though. When an upload of `accli copy` or `accli dispatch` would include one, accli asks `Upload them anyway? [y/N]`. Without a terminal (AI agents, scripts) it stops instead and explains how to exclude them; the GUI asks in a dialog. Pass `-y` to upload them without asking, or exclude them (`--exclude ".git"`, or `exclude=".git"` in `wkube.py`).
+
+To see what makes a folder large before uploading it, `accli size` lists its largest files and folders, largest first. It takes the same `--include`/`--exclude`, so you can check what an upload would contain:
+
+```bash
+accli size ./myjob
+accli size ./myjob --exclude ".git, .venv, outputs" --top 10
+```
 
 #### Large job folders
 

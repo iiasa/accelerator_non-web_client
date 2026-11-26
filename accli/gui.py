@@ -36,6 +36,29 @@ from tkinter import ttk, messagebox, filedialog
 import accli.cli
 from accli.version_checker import RELEASES_URL, check_for_updates, get_upgrade_instruction
 from accli._version import VERSION
+from accli.file_filter import VERSION_CONTROL_MARKER
+
+
+def version_control_question(code, output):
+    """If a command stopped because its upload has version-control folders, the line naming them.
+
+    accli cannot ask in the terminal when the GUI runs it, so it stops instead; the GUI then
+    asks in a dialog and runs the command again with -y if the user says yes.
+    """
+    if code == 0:
+        return None
+    for line in output.splitlines():
+        if VERSION_CONTROL_MARKER in line:
+            return line[line.index(VERSION_CONTROL_MARKER):].strip()
+    return None
+
+
+def ask_upload_version_control(question):
+    return messagebox.askyesno(
+        "Upload version-control folders?",
+        f"{question}\n\nThey hold the project's version history, which a job normally does not use.\n\n"
+        "Upload them anyway?",
+    )
 
 class AccliGuiApp(tk.Tk):
     def __init__(self):
@@ -549,6 +572,10 @@ class AccliGuiApp(tk.Tk):
         self.notebook.select(self.log_tab_idx)
         
         def on_done(code, output):
+            question = version_control_question(code, output)
+            if question and "-y" not in args and ask_upload_version_control(question):
+                self.run_cli_async(args + ["-y"], on_done=on_done)
+                return
             if code == 0:
                 self.status_bar_val.set("Workflow Dispatched")
                 messagebox.showinfo("Success", "Workflow task successfully dispatched!")
@@ -778,6 +805,10 @@ class AccliGuiApp(tk.Tk):
         self.notebook.select(self.log_tab_idx)
         
         def on_done(code, output):
+            question = version_control_question(code, output)
+            if question and "-y" not in args and ask_upload_version_control(question):
+                self.run_cli_async(args + ["-y"], on_done=on_done)
+                return
             if code == 0:
                 self.status_bar_val.set("Transfer Completed")
                 messagebox.showinfo("Success", "File transfer finished successfully!")
