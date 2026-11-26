@@ -21,6 +21,7 @@ dependencies = [
     "pydantic>=2.0",          # Major version 2 required if you're using v2 features
     "GitPython",
     "hf-xet==1.8.0",
+    "cryptography>=3.4",     # checks storage certificates from the server before trusting them
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

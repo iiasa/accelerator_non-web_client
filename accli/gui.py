@@ -280,6 +280,8 @@ class AccliGuiApp(tk.Tk):
                 env = os.environ.copy()
                 env["PYTHONIOENCODING"] = "utf-8"
                 env["PYTHONUTF8"] = "1"
+                # There is no terminal, but a person is at the GUI and can answer prompts.
+                env["ACCLI_GUI"] = "1"
 
                 process = subprocess.Popen(
                     cmd,

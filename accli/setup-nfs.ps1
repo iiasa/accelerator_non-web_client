@@ -12,6 +12,10 @@
 .PARAMETER CertPath
     Path to the IIASA internal object storage certificate (iiasa-internal-s3.crt).
     Defaults to the file next to this script.
+.PARAMETER ExpectedThumbprint
+    Thumbprint the certificate must have; the script stops if it differs. Defaults to the
+    certificate shipped with accli. accli passes the thumbprint of the current certificate,
+    which it may have received from the Accelerator server and checked itself.
 .NOTES
     This script is static and fully auditable by Security and Network Administrators.
 #>
@@ -19,13 +23,15 @@
 param (
     [switch]$NfsAlreadyEnabled,
     [switch]$RegAlreadyEnabled,
-    [string]$CertPath
+    [string]$CertPath,
+    [string]$ExpectedThumbprint = "11E46565A6A204870D0DDFD258863CAF8459F87D"
 )
 
-# 0. Trust the IIASA internal object storage certificate (hctr01obj81.iiasa.ac.at)
+# 0. Trust the IIASA internal object storage certificate
 # Direct data transfer on the IIASA network uses this self-signed certificate. It goes into
 # the machine-wide Root store because the mount runs as SYSTEM, which cannot see a user's own certificates.
-$expectedThumbprint = "11E46565A6A204870D0DDFD258863CAF8459F87D"
+# (PowerShell variable names ignore case: $expectedThumbprint below is this parameter.)
+$ExpectedThumbprint = $ExpectedThumbprint.ToUpperInvariant()
 if (-not $CertPath) {
     $CertPath = Join-Path $PSScriptRoot "iiasa-internal-s3.crt"
 }

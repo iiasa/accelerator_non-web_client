@@ -54,13 +54,39 @@ pip install accli --user
 
 #### IIASA storage certificate
 
-On the IIASA network, data goes directly to the internal storage server `hctr01obj81.iiasa.ac.at`, which uses a self-signed certificate. accli ships this certificate and makes sure it is trusted:
+On the IIASA network, downloads go directly to the internal storage server (currently `hctr01obj81.iiasa.ac.at`), which uses a self-signed certificate. Uploads always go through the Accelerator server and never need it.
 
-- **Windows:** installed into the machine-wide trusted certificates. The first time you mount or copy files, Windows asks for administrator approval once.
-- **macOS:** added to the System keychain. The first time you mount or copy files, macOS asks for your password once.
+- **Downloads (`accli copy acc://… <local path>`):** the Accelerator server tells accli whether your computer counts as internal (VPN connections do not). Outside the IIASA network nothing is required.
+- **Mounts (`accli mount start`):** the certificate is always required, on any network. A mount keeps running when a laptop moves onto the IIASA network, and its reads would then fail without the certificate.
+
+accli ships the certificate and makes sure it is trusted:
+
+- **Windows:** installed into the machine-wide trusted certificates. Windows asks for administrator approval once.
+- **macOS:** added to the System keychain. macOS asks for your password once.
 - **Linux:** accli writes `~/.accli/ca-bundle.pem` (the system's trusted certificates plus this one) and uses it automatically. No administrator rights are needed.
 
-If the certificate is not installed, `accli mount start` and `accli copy` stop with an error instead of transferring data. IT administrators can install it ahead of time with `setup-nfs.ps1` on Windows (see [SECURITY.md](SECURITY.md)).
+To check or install it yourself:
+
+```bash
+accli cert status          # add --json for a machine-readable result
+accli cert install
+```
+
+IT administrators can install it ahead of time with `setup-nfs.ps1` on Windows (see [SECURITY.md](SECURITY.md)).
+
+**When the storage certificate changes:** accli asks the Accelerator server for the current certificate at most once a day (and every time you run `accli cert status` or `accli cert install`), saves it in `~/.accli/storage-certs/`, and asks you to install it, the same way as the first time. No accli update is needed. Certificates installed earlier stay trusted, so nothing breaks during the switch.
+
+Because a certificate from the network ends up trusted by your computer, accli only accepts one that cannot vouch for anything else: not a certificate authority, valid for exactly one server under `iiasa.ac.at` (no wildcards), and currently valid. Anything else is refused with a warning, and accli keeps using the certificate it has.
+
+For server administrators: the Accelerator server publishes the current certificate by default (`configs/InternalStorageCert.py`). To change it, replace it there, or set `XET_CAS_S3_INTERNAL_CERT_BASE64` (the base64 of the PEM file), **at least a day before** switching the storage server to it, so users have it before it is needed.
+
+#### AI agents and scripts
+
+When accli runs without an interactive terminal (AI agents, scripts, CI), it never opens an administrator prompt, because nobody could answer it. If a person has to act first, the command stops with **exit code 3** and prints a message starting with `ACTION REQUIRED:` that says what to ask the user to run (for example `accli cert install`). Exit code 1 still means other errors.
+
+- `accli cert status --json` lets an agent check in advance: `"action_required": true` means a person must run `"fix_command"`.
+- `ACCLI_NO_PROMPT=1` turns prompts off even in a terminal. Set it for agent tools that run commands in a terminal, so accli stops with exit code 3 instead of waiting on a dialog nobody sees.
+- The same guidance is printed by `accli --help`, and in short by `accli copy --help`, `accli mount start --help` and `accli cert --help`.
 
 ### ▶️ Usage
 

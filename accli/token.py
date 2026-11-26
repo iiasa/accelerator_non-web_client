@@ -151,6 +151,18 @@ def exchange_refresh_token(project_slug: str) -> tuple[str, str, int]:
             raise typer.Exit(1)
 
 
+def get_access_token() -> str:
+    """Return a valid access token for requests that are not tied to a project.
+
+    Reuses the token from an earlier exchange in this process when it is still fresh,
+    so no extra refresh-token rotation happens. Exits like exchange_refresh_token when
+    the user is not logged in or the session has expired.
+    """
+    if _cached_access_token and (_cached_expires_at - int(time.time()) > 300):
+        return _cached_access_token
+    return exchange_refresh_token("")[1]
+
+
 def get_github_app_token():
     db_path = get_db_path()
 
@@ -206,6 +218,7 @@ def get_server_url():
 
     db = TinyDB(db_path)
 
+    server_url = None  # stays None when nobody has logged in yet
     for item in db:
         server_url = item.get('server_url')
         if server_url:

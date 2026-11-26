@@ -20,7 +20,7 @@ from accli.AcceleratorTerminalCliProjectService import AcceleratorTerminalCliPro
 from accli.CsvRegionalTimeseriesValidator import CsvRegionalTimeseriesValidator
 from accli.log_timeline import build_timeline
 from accli import job_views
-from accli.token import save_token_details, get_token, get_server_url, set_project_slug, get_project_slug, get_db_path, exchange_refresh_token
+from accli.token import save_token_details, get_token, get_server_url, set_project_slug, get_project_slug, get_db_path, exchange_refresh_token, get_access_token
 from rich import print
 from rich.text import Text
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
@@ -36,10 +36,31 @@ warnings.filterwarnings('ignore')
 
 ACCLI_DEBUG = os.environ.get('ACCLI_DEBUG', False)
 
+AGENT_HELP = (
+    "[bold]AI agents and scripts:[/bold]\n\n"
+    "Some steps need a person: installing the IIASA storage certificate (needed for mounts, and for "
+    "downloads on the IIASA network) and the one-time Windows mount setup. accli only opens a password "
+    "or administrator dialog when a person can answer it.\n\n"
+    "[bold]Exit code 3[/bold] means a person must act. The command printed a message starting with "
+    "'ACTION REQUIRED:'. Do not retry. Show that message to the user and ask them to run the command it "
+    "names (usually 'accli cert install') in their own terminal, then retry. Exit code 1 means any other error.\n\n"
+    "If your tool runs commands in a terminal, set [bold]ACCLI_NO_PROMPT=1[/bold], so accli stops with "
+    "exit code 3 instead of waiting on a dialog that nobody sees.\n\n"
+    "Check in advance with 'accli cert status --json' (fields: action_required, fix_command). "
+    "Uploads (local path -> acc://) never need the certificate."
+)
+
+AGENT_COMMAND_NOTE = (
+    "[bold]AI agents and scripts:[/bold] exit code 3 means a person must act (usually run "
+    "'accli cert install'); show the printed 'ACTION REQUIRED:' message to the user instead of retrying. "
+    "Set ACCLI_NO_PROMPT=1 if your tool runs commands in a terminal. See 'accli --help'."
+)
+
 app = typer.Typer(
     add_completion=False,
     pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]}
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog=AGENT_HELP,
 )
 
 
@@ -78,15 +99,80 @@ def main_callback(
         raise typer.Exit()
 
 
-def require_storage_cert():
-    """Stop unless IIASA's internal storage certificate is trusted, installing it first if needed.
+def print_cert_action_required(reason: str, command: str = "accli cert install"):
+    """Explain, in plain text for people and AI agents alike, that a person has to act."""
+    typer.echo(
+        "ACTION REQUIRED: a person must install the IIASA storage certificate.\n"
+        f"{reason}\n"
+        f"The certificate for {internal_certs.current_cert().host} is not trusted on this computer yet. Installing it\n"
+        "needs administrator approval, which cannot be given here (no interactive terminal).\n"
+        "Ask the user to run this once in their own terminal, then retry:\n"
+        f"    {command}\n"
+        "Uploads (local path -> acc://) do not need the certificate.",
+        err=True,
+    )
 
-    Data transfers on the IIASA network go directly to the storage server, which uses this certificate.
+
+MOUNT_CERT_REASON = (
+    "A mount keeps running when this computer moves onto the IIASA network, "
+    "so mounting always needs the IIASA storage certificate."
+)
+
+
+def refresh_storage_cert_if_due(server_url: str = None):
+    """Once a day, get the current storage certificate from the server and save it.
+
+    Returns the server's network answer when it was asked (dict, or None if it could not
+    be reached), else internal_certs._ASK_SERVER so callers know to ask when they need it.
     """
+    if not server_url or not internal_certs.server_check_due():
+        return internal_certs._ASK_SERVER
+    network, warning = internal_certs.refresh_from_server(server_url, get_access_token())
+    if warning:
+        print(f"[yellow]Warning: {warning}[/yellow]")
+    return network
+
+
+def require_storage_cert(server_url: str = None, always: bool = False):
+    """Stop unless IIASA's internal storage certificate is trusted where it is needed.
+
+    On the IIASA network, downloads go directly to the storage server, which uses this
+    certificate. The server tells accli whether this computer counts as internal; outside
+    the IIASA network nothing is required. With always=True (mounts, which can outlive a
+    network change) the certificate is required on any network.
+
+    When a person can answer a prompt, accli installs the certificate; otherwise (AI agents,
+    scripts) it stops with exit code 3 and says what to do.
+
+    Once a day, accli also asks the server for the current certificate, so a new storage
+    certificate is picked up without an accli release.
+    """
+    server_url = server_url or get_server_url()
+    network = refresh_storage_cert_if_due(server_url)
+
     try:
         if internal_certs.ensure_trusted(install=False):
             return
-        print(f"[yellow]The IIASA storage certificate ({internal_certs.CERT_HOST}) must be installed for data transfer.[/yellow]")
+    except Exception as e:
+        print(f"[bold red]ERROR: Could not set up the IIASA storage certificate: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if always:
+        reason = MOUNT_CERT_REASON
+    else:
+        if not server_url:
+            return  # not logged in; the command itself reports that
+        needed, reason = internal_certs.cert_needed(server_url, get_access_token(), network)
+        if not needed:
+            return
+
+    if not internal_certs.can_prompt():
+        print_cert_action_required(reason)
+        raise typer.Exit(internal_certs.EXIT_NEEDS_PERSON)
+
+    try:
+        print(f"[yellow]{reason}[/yellow]")
+        print(f"[yellow]The IIASA storage certificate ({internal_certs.current_cert().host}) must be installed for data transfer.[/yellow]")
         if sys.platform == "win32":
             print("[yellow]Approve the Windows administrator prompt to install it.[/yellow]")
         elif sys.platform == "darwin":
@@ -465,7 +551,7 @@ def compute_sha256(filepath: str) -> str:
 
 
 
-@app.command()
+@app.command(epilog=AGENT_COMMAND_NOTE)
 def copy(
         source: Annotated[str, typer.Argument(help="Source path (local path or remote acc://...)")],
         destination: Annotated[str, typer.Argument(help="Destination path (local path or remote acc://...)")],
@@ -473,7 +559,10 @@ def copy(
 ):
     """
     Copy files between local filesystems and Accelerator project spaces using hf-xet.
+
     At least one of the paths must be a remote path starting with 'acc://'.
+
+    Downloads (acc:// -> local path) on the IIASA network need the IIASA storage certificate; uploads never do.
     """
     is_src_remote = source.startswith("acc://")
     is_dest_remote = destination.startswith("acc://")
@@ -485,7 +574,9 @@ def copy(
         print("[bold red]ERROR: Remote-to-remote copy is not supported. One path must be local.[/bold red]")
         raise typer.Exit(1)
 
-    require_storage_cert()
+    # Downloads may go directly to IIASA's internal storage; uploads always go through the server.
+    if is_src_remote:
+        require_storage_cert()
 
     # Resolve project_slug from the remote path
     remote_path_str = source if is_src_remote else destination
@@ -924,6 +1015,120 @@ def cache_clear(
     xet_cache.clear_cache(server_url, fetch_access_token, all_servers=all_servers, yes=yes, force=force)
 
 
+# --- Certificate commands group ---
+cert_app = typer.Typer(
+    help="Check or install IIASA's internal storage certificate (needed for mounts, and for downloads on the IIASA network).",
+    epilog=AGENT_HELP,
+    no_args_is_help=True
+)
+app.add_typer(cert_app, name="cert")
+
+
+@cert_app.command("status")
+def cert_status(
+    as_json: Annotated[bool, typer.Option("--json", help="Print the result as JSON (for scripts and AI agents).")] = False,
+):
+    """
+    Show whether the certificate is installed and whether this computer needs it.
+
+    Exit code 0 if nothing needs doing, 3 if a person must run 'accli cert install'.
+    """
+    # Always ask the server here, so a new storage certificate shows up right away.
+    server_url, access_token = _signed_in_quietly()
+    network, warning = (None, None)
+    if server_url and access_token:
+        network, warning = internal_certs.refresh_from_server(server_url, access_token)
+
+    try:
+        trusted = internal_certs.ensure_trusted(install=False)
+        cert = internal_certs.current_cert()
+    except Exception as e:
+        print(f"[bold red]ERROR: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if server_url and access_token:
+        needed, reason = internal_certs.cert_needed(server_url, access_token, network)
+    else:
+        needed, reason = True, "Not logged in (or the session expired), so accli cannot check the network. Run 'accli login'."
+    action_required = needed and not trusted
+
+    if as_json:
+        typer.echo(json.dumps({
+            "certificate_host": cert.host,
+            "certificate_sha1": cert.sha1,
+            "certificate_source": cert.source,
+            "certificate_valid_until": cert.not_after.date().isoformat(),
+            "installed": trusted,
+            "internal_network": network["internal"] if network else None,
+            "needed": needed,
+            "action_required": action_required,
+            "fix_command": "accli cert install" if action_required else None,
+            "reason": reason,
+            "warning": warning,
+        }, indent=2))
+    else:
+        print(f"Certificate for {cert.host}: " + ("[green]installed[/green]" if trusted else "[yellow]not installed[/yellow]"))
+        print(f"[dim]Fingerprint {cert.sha1}, valid until {cert.not_after:%Y-%m-%d}, "
+              f"from {'the Accelerator server' if cert.source == 'server' else 'accli itself'}.[/dim]")
+        if warning:
+            print(f"[yellow]Warning: {warning}[/yellow]")
+        print(reason)
+        if action_required:
+            print("[yellow]Run 'accli cert install' in your own terminal before downloading data.[/yellow]")
+        else:
+            print("[green]Nothing to do.[/green]")
+
+    if action_required:
+        raise typer.Exit(internal_certs.EXIT_NEEDS_PERSON)
+
+
+def _signed_in_quietly():
+    """(server_url, access_token), or Nones when not logged in. Keeps the login helpers' messages out of the output."""
+    import io
+    from contextlib import redirect_stdout
+    server_url = access_token = None
+    with redirect_stdout(io.StringIO()):
+        server_url = get_server_url()
+        if server_url:
+            try:
+                access_token = get_access_token()
+            except (typer.Exit, SystemExit, Exception):
+                access_token = None
+    return server_url, access_token
+
+
+@cert_app.command("install")
+def cert_install():
+    """
+    Install the certificate on this computer (asks for administrator approval on Windows and macOS).
+    """
+    # Get the current certificate from the server first, if logged in.
+    server_url, access_token = _signed_in_quietly()
+    if server_url and access_token:
+        _, warning = internal_certs.refresh_from_server(server_url, access_token)
+        if warning:
+            print(f"[yellow]Warning: {warning}[/yellow]")
+
+    try:
+        host = internal_certs.current_cert().host
+        if internal_certs.ensure_trusted(install=False):
+            print(f"[bold green][OK] The certificate for {host} is already installed.[/bold green]")
+            return
+        if sys.platform == "win32":
+            print("[yellow]Approve the Windows administrator prompt to install the certificate.[/yellow]")
+        elif sys.platform == "darwin":
+            print("[yellow]Enter your Mac password in the dialog to install the certificate.[/yellow]")
+        trusted = internal_certs.ensure_trusted(install=True)
+    except Exception as e:
+        print(f"[bold red]ERROR: Could not install the certificate: {e}[/bold red]")
+        raise typer.Exit(1)
+
+    if not trusted:
+        print("[bold red]ERROR: The certificate was not installed. Run the command again and approve the prompt, or ask your IT administrator.[/bold red]")
+        raise typer.Exit(1)
+    print(f"[bold green][OK] The certificate for {host} is installed.[/bold green]")
+
+
 # --- Mount commands group ---
 mount_app = typer.Typer(
     help="Manage mounting Accelerator project spaces locally using hf-mount.",
@@ -1354,9 +1559,17 @@ def enable_windows_nfs_features():
     import subprocess
     import tempfile
     import os
-    
+
+    # Pick up a new storage certificate from the server (once a day) before checking for it.
+    refresh_storage_cert_if_due(get_server_url())
+    try:
+        storage_cert = internal_certs.current_cert()
+    except Exception as e:
+        print(f"[bold red]ERROR: {e}[/bold red]")
+        raise typer.Exit(1)
+
     print("[cyan]Auditing Windows Client for NFS system configuration...[/cyan]")
-    
+
     # 1. Non-elevated audit queries for Features, Registry, and Task Scheduler Gateway
     check_script = (
         "$nfsEnabled = Test-Path 'C:\\Windows\\System32\\mount.exe'\n"
@@ -1403,7 +1616,7 @@ def enable_windows_nfs_features():
         "}\n"
         "\n"
         "\n"
-        f"$certEnabled = Test-Path 'Cert:\\LocalMachine\\Root\\{internal_certs.CERT_SHA1}'\n"
+        f"$certEnabled = Test-Path 'Cert:\\LocalMachine\\Root\\{storage_cert.sha1}'\n"
         "\n"
         "Write-Output \"NFS:$nfsEnabled;REG:$regEnabled;ANON:$anonEnabled;CACHE:$cacheEnabled;TASK:$taskEnabled;CERT:$certEnabled\""
     )
@@ -1485,11 +1698,23 @@ def enable_windows_nfs_features():
     if nfs_ok and reg_ok and task_ok:
         # Everything else is set up already (e.g. users from before the certificate was added):
         # install just the certificate rather than re-running the whole administrator setup.
-        require_storage_cert()
+        # Always, not only on the IIASA network: the mount may outlive a network change.
+        require_storage_cert(always=True)
         return
 
+    if not internal_certs.can_prompt():
+        # An AI agent or script cannot approve the administrator prompt; a person has to.
+        typer.echo(
+            "ACTION REQUIRED: a person must run the one-time Windows mount setup.\n"
+            "It needs administrator approval, which cannot be given here (no interactive terminal).\n"
+            "Ask the user to run this once in their own terminal, then retry:\n"
+            "    accli mount start <project-slug>",
+            err=True,
+        )
+        raise typer.Exit(internal_certs.EXIT_NEEDS_PERSON)
+
     if not cert_ok:
-        print(f"[yellow]The IIASA storage certificate ({internal_certs.CERT_HOST}) must be installed for direct data transfer.[/yellow]")
+        print(f"[yellow]The IIASA storage certificate ({storage_cert.host}) must be installed for direct data transfer.[/yellow]")
     print("[yellow]Administrative setup is required to configure the Windows NFS mount gateway.[/yellow]")
     print("[italic]A UAC administrator elevation prompt will appear shortly. Please approve it...[/italic]")
     
@@ -1520,7 +1745,7 @@ def enable_windows_nfs_features():
         
     temp_dir = tempfile.gettempdir()
     temp_file_path = os.path.join(temp_dir, "accli_nfs_setup.ps1")
-    temp_cert_path = os.path.join(temp_dir, internal_certs.CERT_FILENAME)
+    temp_cert_path = os.path.join(temp_dir, f"accli-storage-{storage_cert.sha1}.crt")
 
     try:
         with open(temp_file_path, "w", encoding="utf-8") as f:
@@ -1528,13 +1753,13 @@ def enable_windows_nfs_features():
 
         try:
             import shutil
-            shutil.copyfile(internal_certs.cert_path(), temp_cert_path)
+            shutil.copyfile(storage_cert.path, temp_cert_path)
         except Exception as e:
             print(f"[bold red]ERROR: {e}[/bold red]")
             raise typer.Exit(1)
 
         # Build arguments for Start-Process to pass state as parameters
-        ps_params = [f'-CertPath "{temp_cert_path}"']
+        ps_params = [f'-CertPath "{temp_cert_path}"', f'-ExpectedThumbprint {storage_cert.sha1}']
         if nfs_ok:
             ps_params.append("-NfsAlreadyEnabled")
         if reg_ok:
@@ -1554,8 +1779,8 @@ def enable_windows_nfs_features():
             raise typer.Exit(1)
             
         # The elevated script's exit code is not passed back through Start-Process, so check the result directly.
-        if not internal_certs.windows_cert_installed():
-            print(f"[bold red][ERROR] The IIASA storage certificate ({internal_certs.CERT_HOST}) was not installed.[/bold red]")
+        if not internal_certs.windows_cert_installed(storage_cert):
+            print(f"[bold red][ERROR] The IIASA storage certificate ({storage_cert.host}) was not installed.[/bold red]")
             print("[yellow]It is required for direct data transfer. Run 'accli mount start' again and approve the administrator prompt.[/yellow]")
             raise typer.Exit(1)
 
@@ -1590,7 +1815,7 @@ def enable_windows_nfs_features():
                     pass
 
 
-@mount_app.command("start")
+@mount_app.command("start", epilog=AGENT_COMMAND_NOTE)
 def mount_start(
     project_slug: Annotated[str, typer.Argument(help="Unique Accelerator project slug, bucket, or repository ID.")],
     mount_point: Annotated[Path, typer.Argument(help="Local directory path where the filesystem will be mounted. (Defaults: W: or first available drive on Windows, ~/accelerator/mnt/<project_slug> on Unix/Linux).")] = None,
@@ -1602,6 +1827,8 @@ def mount_start(
 ):
     """
     Start a mount as a background daemon.
+
+    Mounting always needs the IIASA storage certificate, because a mount keeps running when the computer moves onto the IIASA network.
     """
     from . import mount_downloader
     import platform
@@ -1699,10 +1926,11 @@ def mount_start(
         else:
             mount_point_abs = mount_point.resolve()
 
-    # Direct data transfer needs IIASA's internal storage certificate to be trusted.
+    # Reads from a mount may go directly to IIASA's internal storage, now or after the computer
+    # moves onto the IIASA network, so a mount always needs the certificate.
     # (On Windows this is part of the administrator setup in enable_windows_nfs_features.)
     if sys_name != "Windows":
-        require_storage_cert()
+        require_storage_cert(server_url, always=True)
 
     # Construct environment
     env = os.environ.copy()
