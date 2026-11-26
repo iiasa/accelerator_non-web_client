@@ -828,7 +828,6 @@ def copy(
                             registered_object_ids.extend(
                                 item["id"] for item in registered
                                 if isinstance(item, dict) and isinstance(item.get("id"), int)
-                                and not isinstance(item.get("id"), bool)
                             )
 
                     batch_size = sum(p.stat().st_size for p in b_paths)
